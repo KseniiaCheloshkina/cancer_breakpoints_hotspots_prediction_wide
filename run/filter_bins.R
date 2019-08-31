@@ -6,14 +6,17 @@ require(data.table)
 script_path <- dirname(rstudioapi::getSourceEditorContext()$path)
 setwd(script_path)
 
-source("../../cbp_data/get_intersections.R")
-source("../../cbp_data/get_genome_windows.R")
+source("../cbp_data/get_intersections.R")
+source("../cbp_data/get_genome_windows.R")
 
 # set window size
 win_len <- 1000000
 
-centromeres_path <- "../../cbp_data/data/genome/gaps.bed"
-blacklist_path <- "../../cbp_data/data/genome/dac_blacklist.bed"
+path_to_data_folder <- "../../cbp_data/data/"
+
+centromeres_path <- paste0(path_to_data_folder, "genome/gaps.bed")
+blacklist_path <- paste0(path_to_data_folder, "genome/dac_blacklist.bed")
+
 output_path <- "../data/good_bins/"
 
 ############### Regions to filter
@@ -71,4 +74,4 @@ chr_windows <- chr_windows %>%
   filter(is.na(is_intersected)) %>% 
   select(-is_intersected)
 
-write.csv(chr_windows, paste0(output_path, "bins_", win_len,".csv"))
+write.csv(chr_windows, paste0(output_path, "bins_", format(win_len, scientific = FALSE),".csv"))

@@ -24,7 +24,7 @@ output_path <- "../data/good_bins/"
 # get genome windows for specified window length 
 chr_windows <- get_chr_windows_hg19(win_len)
 
-# remove first and last bins of ech chromosome
+# remove first and last bins of each chromosome
 chr_windows <- chr_windows %>%
   group_by(chr) %>%
   mutate(

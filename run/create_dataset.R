@@ -4,12 +4,15 @@ setwd('..')
 
 library(dplyr)
 
+output_folder <- "data/datasets/"
+
+
+
 ##### Get breakpoints hotspots (target)
 
-# read reakpoints data splitted on 10kb windows
-breakpoints_path <- "../cbp_data/data/raw breakpoints/structural mutation/3_breakpoints/"
-bkpt <- read.csv(paste0(breakpoints_path, "all_cancers.csv"), row.names = 1, 
-                 stringsAsFactors = FALSE)
+# read breakpoints data splitted on 10kb windows
+breakpoints_path <- "data/target/"
+bkpt <- read.csv(paste0(breakpoints_path, "all_data_10000.csv"), stringsAsFactors = FALSE)
 select_cols <- c("chr", "from", "to",  
                  "bkpt_in_window_blood", "bkpt_in_window_bone", "bkpt_in_window_brain",
                  "bkpt_in_window_breast", "bkpt_in_window_liver", "bkpt_in_window_ovary",
@@ -18,13 +21,29 @@ select_cols <- c("chr", "from", "to",
 bkpt <- bkpt[select_cols]
 
 
-# aggregate to win_len
+
 
 win_len <- 10000
 
-# create new from to and group by them summarizing quantity bkpt
-bkpt_data <- bkpt
-
+# aggregate to win_len
+if (win_len == 10000){
+  bkpt_data <- bkpt
+} else {
+  bkpt_data <- bkpt
+  bkpt_data$new_from <- floor(bkpt_data$from / win_len) * win_len
+  bkpt_data$new_to <- bkpt_data$new_from + win_len
+  
+  bkpt_cols <- grep(x = names(bkpt_data), pattern = "bkpt", value = TRUE)
+  
+  
+  bkpt_data <- bkpt_data %>%
+    group_by(chr, new_from, new_to) %>%
+    summarise_at(bkpt_cols, sum)
+  
+  bkpt_data <- bkpt_data %>%
+    rename("to" = "new_to") %>%
+    rename("from" = "new_from")
+}
 
 
 
@@ -47,8 +66,8 @@ bins <- bins %>%
 bkpt_data <- bins %>% 
   inner_join(bkpt_data, by=c("chr", "from", "to"))
 
-# density
 
+# density
 quantity_names <- c("bkpt_in_window_blood", "bkpt_in_window_bone", "bkpt_in_window_brain",
                     "bkpt_in_window_breast", "bkpt_in_window_liver", "bkpt_in_window_ovary",
                     "bkpt_in_window_pancreatic", "bkpt_in_window_prostate", 
@@ -115,7 +134,7 @@ for (dupl_col in dupl_cols){
     ifelse(all(bkpt_data[col] == bkpt_data[dupl_col]), duplicates[dupl_col] <- col, FALSE)
   }
 }
-
+duplicates
 drop_cols <- c("hsp_99%_blood", 
                "hsp_99%_bone", "hsp_99.5%_bone", 
                "hsp_99%_brain", "hsp_99.5%_brain")
@@ -123,17 +142,25 @@ drop_cols <- c("hsp_99%_blood",
 bkpt_data <- bkpt_data %>%
   select(-drop_cols)
 
+
+
+
+
+
 ##### Join features
+
 
 features_path <- "data/features/"
 all_features_paths <- list.files(features_path)
 
 # collect conserved features
-conserved_features_path <- c("a-phased_repeats", "direct_repeats", "inverted_repeats", 
-                             "mirror_repeats","short_tandem_repeats",
-                             "G_quadruplexes", "sl_long",
-                             "genome_regions", "tad",
-                             "sl_short")
+conserved_features_path <- c(
+  # "a-phased_repeats", "direct_repeats", "inverted_repeats", 
+  # "mirror_repeats","short_tandem_repeats",
+  "G_quadruplex"
+  # "sl_long", "sl_short",
+  # "genome_regions", "tad"
+  )
 
 all_full_conserved_features_path <- vector()
 
@@ -144,7 +171,8 @@ for (folder in conserved_features_path){
     all_full_conserved_features_path, 
     paste0(
       full_path, 
-      grep(x = fl, pattern = paste0("_", format(win_len, scientific = FALSE), ".csv"), value = TRUE)
+      grep(x = fl, pattern = paste0("_", format(win_len, scientific = FALSE), ".csv"), 
+           value = TRUE)
     )
         )
 }
@@ -164,4 +192,54 @@ for (feat_path in all_full_conserved_features_path){
 
 
 # collect tisssue-specific features
-# join by cancer type
+
+tissue_spec_features_path <- c(
+  # "DNA_methylation",
+  "histones"
+  # "chromatin_state",
+  # "TF"
+  )
+
+all_full_spec_features_path <- vector()
+
+for (folder in tissue_spec_features_path){
+  full_path <- paste0(features_path, folder, "/")
+  fl <- list.files(full_path)
+  all_full_spec_features_path <- append(
+    all_full_spec_features_path, 
+    paste0(
+      full_path, 
+      grep(x = fl, pattern = paste0("_", format(win_len, scientific = FALSE), ".csv"), 
+           value = TRUE)
+    )
+  )
+}
+
+
+for (feat_path in all_full_spec_features_path){
+  
+  feature_data <- read.csv(feat_path, stringsAsFactors = FALSE, header = TRUE, row.names = 1)
+  all_cancer_types <- unique(feature_data$cancer_type)
+  
+  for (canc_type in all_cancer_types){
+    
+    feature_data_part <- feature_data[feature_data$cancer_type == canc_type, ]
+    feature_data_part$cancer_type <- NULL
+    feat_name <- names(feature_data_part)[ncol(feature_data_part)]
+    new_feat_name <- paste0("cancer_", canc_type, "_", feat_name)
+    feature_data_part <- feature_data_part %>%
+      rename(!!new_feat_name := feat_name)
+    
+    all_data <- all_data  %>%
+      left_join(feature_data_part, by=c("chr", "from", "to"))
+    all_data[is.na(all_data[new_feat_name]), new_feat_name] <- 0  
+    
+  }
+}
+
+write.csv(all_data, 
+          file = paste0(output_folder, "dataset_", 
+                        format(win_len, scientific = FALSE), ".csv"),
+          row.names = FALSE
+          )
+

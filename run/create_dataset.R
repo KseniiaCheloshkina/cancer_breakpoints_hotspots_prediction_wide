@@ -23,7 +23,7 @@ bkpt <- bkpt[select_cols]
 
 
 
-win_len <- 10000
+win_len <- 1000000
 
 # aggregate to win_len
 if (win_len == 10000){
@@ -135,9 +135,18 @@ for (dupl_col in dupl_cols){
   }
 }
 duplicates
-drop_cols <- c("hsp_99%_blood", 
-               "hsp_99%_bone", "hsp_99.5%_bone", 
-               "hsp_99%_brain", "hsp_99.5%_brain")
+# win_len <- 10000
+# drop_cols <- c("hsp_99%_blood", 
+#                "hsp_99%_bone", "hsp_99.5%_bone", 
+#                "hsp_99%_brain", "hsp_99.5%_brain")
+
+# win_len <- 20000
+# drop_cols <- c("hsp_99%_blood", 
+#                "hsp_99%_bone", 
+#                "hsp_99%_brain")
+
+# win_len <- 1000000
+drop_cols <- c("hsp_99.9%_blood")
 
 bkpt_data <- bkpt_data %>%
   select(-drop_cols)
@@ -153,13 +162,14 @@ bkpt_data <- bkpt_data %>%
 features_path <- "data/features/"
 all_features_paths <- list.files(features_path)
 
+
 # collect conserved features
 conserved_features_path <- c(
-  # "a-phased_repeats", "direct_repeats", "inverted_repeats", 
-  # "mirror_repeats","short_tandem_repeats",
-  "G_quadruplex"
-  # "sl_long", "sl_short",
-  # "genome_regions", "tad"
+  "a-phased_repeats", "direct_repeats", "inverted_repeats",
+  "mirror_repeats","short_tandem_repeats",
+  "G_quadruplexes",
+  "sl_long", "sl_short",
+  "genome_regions", "tad","z-dna_motifs"
   )
 
 all_full_conserved_features_path <- vector()
@@ -181,10 +191,12 @@ all_data <- bkpt_data
 
 for (feat_path in all_full_conserved_features_path){
   
-  feature_data <- read.csv(feat_path, stringsAsFactors = FALSE, header = TRUE, row.names = 1)
-  
+  feature_data <- read.csv(feat_path, stringsAsFactors = FALSE, header = TRUE)
+  if ("X" %in% names(feature_data)){
+    feature_data$X <- NULL
+  }
   all_data <- all_data  %>%
-    left_join(feature_data, by=c("chr", "from", "to"))
+    left_join(feature_data, by = c("chr", "from", "to"))
   
   feat_col <- names(feature_data)[ncol(feature_data)]
   all_data[is.na(all_data[feat_col]), feat_col] <- 0  
@@ -193,12 +205,7 @@ for (feat_path in all_full_conserved_features_path){
 
 # collect tisssue-specific features
 
-tissue_spec_features_path <- c(
-  # "DNA_methylation",
-  "histones"
-  # "chromatin_state",
-  # "TF"
-  )
+tissue_spec_features_path <- c("chromatin_state", "DNA_methylation", "histones", "TF")
 
 all_full_spec_features_path <- vector()
 
@@ -218,7 +225,10 @@ for (folder in tissue_spec_features_path){
 
 for (feat_path in all_full_spec_features_path){
   
-  feature_data <- read.csv(feat_path, stringsAsFactors = FALSE, header = TRUE, row.names = 1)
+  feature_data <- read.csv(feat_path, stringsAsFactors = FALSE, header = TRUE)
+  if ("X" %in% names(feature_data)){
+    feature_data$X <- NULL
+  }
   all_cancer_types <- unique(feature_data$cancer_type)
   
   for (canc_type in all_cancer_types){

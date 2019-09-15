@@ -8,7 +8,7 @@ library(purrr)
 library(foreach)
 library(doParallel)
 
-n_cores <- 10
+n_cores <- 14
 registerDoParallel(n_cores)
 
 source("cbp_data/get_intersections.R")
@@ -124,8 +124,7 @@ get_coverage_overlapped <- function(res, data_intersected, win_len, feat_name){
 
 
 
-# win_len <- 10000
-win_len <- 500000
+win_len <- 1000000
 
 output_path <- "data/features/"
 
@@ -134,9 +133,57 @@ path_to_data_folder <- "../cbp_data/data/"
 mapping_files_nm <- list()
 mapping_files_nm  <- c(
   'genome_regions/all_genome_regions.csv', 
-  'DNA_methylation/preprocessed/data_all.csv',
+
+  'DNA_methylation/preprocessed/data_chr_1.csv',
+  'DNA_methylation/preprocessed/data_chr_2.csv',
+  'DNA_methylation/preprocessed/data_chr_3.csv',
+  'DNA_methylation/preprocessed/data_chr_4.csv',
+  'DNA_methylation/preprocessed/data_chr_5.csv',
+  'DNA_methylation/preprocessed/data_chr_6.csv',
+  'DNA_methylation/preprocessed/data_chr_7.csv',
+  'DNA_methylation/preprocessed/data_chr_8.csv',
+  'DNA_methylation/preprocessed/data_chr_9.csv',
+  'DNA_methylation/preprocessed/data_chr_10.csv',
+  'DNA_methylation/preprocessed/data_chr_11.csv',
+  'DNA_methylation/preprocessed/data_chr_12.csv',
+  'DNA_methylation/preprocessed/data_chr_13.csv',
+  'DNA_methylation/preprocessed/data_chr_14.csv',
+  'DNA_methylation/preprocessed/data_chr_15.csv',
+  'DNA_methylation/preprocessed/data_chr_16.csv',
+  'DNA_methylation/preprocessed/data_chr_17.csv',
+  'DNA_methylation/preprocessed/data_chr_18.csv',
+  'DNA_methylation/preprocessed/data_chr_19.csv',
+  'DNA_methylation/preprocessed/data_chr_20.csv',
+  'DNA_methylation/preprocessed/data_chr_21.csv',
+  'DNA_methylation/preprocessed/data_chr_22.csv',
+  'DNA_methylation/preprocessed/data_chr_X.csv',
+  
   'histones/preprocessed/data_all.csv',
-  "regulatory_regions/preprocessed/data_all.csv",
+  
+  "regulatory_regions/preprocessed/data_chr_1.csv",
+  "regulatory_regions/preprocessed/data_chr_2.csv",
+  "regulatory_regions/preprocessed/data_chr_3.csv",
+  "regulatory_regions/preprocessed/data_chr_4.csv",
+  "regulatory_regions/preprocessed/data_chr_5.csv",
+  "regulatory_regions/preprocessed/data_chr_6.csv",
+  "regulatory_regions/preprocessed/data_chr_7.csv",
+  "regulatory_regions/preprocessed/data_chr_8.csv",
+  "regulatory_regions/preprocessed/data_chr_9.csv",
+  "regulatory_regions/preprocessed/data_chr_10.csv",
+  "regulatory_regions/preprocessed/data_chr_11.csv",
+  "regulatory_regions/preprocessed/data_chr_12.csv",
+  "regulatory_regions/preprocessed/data_chr_13.csv",
+  "regulatory_regions/preprocessed/data_chr_14.csv",
+  "regulatory_regions/preprocessed/data_chr_15.csv",
+  "regulatory_regions/preprocessed/data_chr_16.csv",
+  "regulatory_regions/preprocessed/data_chr_17.csv",
+  "regulatory_regions/preprocessed/data_chr_18.csv",
+  "regulatory_regions/preprocessed/data_chr_19.csv",
+  "regulatory_regions/preprocessed/data_chr_20.csv",
+  "regulatory_regions/preprocessed/data_chr_21.csv",
+  "regulatory_regions/preprocessed/data_chr_22.csv",
+  "regulatory_regions/preprocessed/data_chr_X.csv",
+  
   "TAD_chromatin/all_tad_boundaries.csv",
   "transcr_factors/preprocessed/data_all.csv",
   "a-phased_repeats/data_all.csv",
@@ -174,9 +221,57 @@ mapping_files_nm  <- c(
 
 names(mapping_files_nm) <- c(
   "genome_regions",
-  "DNA_methylation",
+  
+  "DNA_methylation_chr_1",
+  "DNA_methylation_chr_2",
+  "DNA_methylation_chr_3",
+  "DNA_methylation_chr_4",
+  "DNA_methylation_chr_5",
+  "DNA_methylation_chr_6",
+  "DNA_methylation_chr_7",
+  "DNA_methylation_chr_8",
+  "DNA_methylation_chr_9",
+  "DNA_methylation_chr_10",
+  "DNA_methylation_chr_11",
+  "DNA_methylation_chr_12",
+  "DNA_methylation_chr_13",
+  "DNA_methylation_chr_14",
+  "DNA_methylation_chr_15",
+  "DNA_methylation_chr_16",
+  "DNA_methylation_chr_17",
+  "DNA_methylation_chr_18",
+  "DNA_methylation_chr_19",
+  "DNA_methylation_chr_20",
+  "DNA_methylation_chr_21",
+  "DNA_methylation_chr_22",
+  "DNA_methylation_chr_X",
+
   "histones",
-  "chromatin_state",
+  
+  "chromatin_state_chr_1",
+  "chromatin_state_chr_2",
+  "chromatin_state_chr_3",
+  "chromatin_state_chr_4",
+  "chromatin_state_chr_5",
+  "chromatin_state_chr_6",
+  "chromatin_state_chr_7",
+  "chromatin_state_chr_8",
+  "chromatin_state_chr_9",
+  "chromatin_state_chr_10",
+  "chromatin_state_chr_11",
+  "chromatin_state_chr_12",
+  "chromatin_state_chr_13",
+  "chromatin_state_chr_14",
+  "chromatin_state_chr_15",
+  "chromatin_state_chr_16",
+  "chromatin_state_chr_17",
+  "chromatin_state_chr_18",
+  "chromatin_state_chr_19",
+  "chromatin_state_chr_20",
+  "chromatin_state_chr_21",
+  "chromatin_state_chr_22",
+  "chromatin_state_chr_X",
+  
   "tad",
   "TF",
   "a-phased_repeats",
@@ -230,14 +325,14 @@ bins <- read.csv(paste0(bins_path, "bins_", format(win_len, scientific = FALSE),
 ## 2. For tissue-specific features
 
 conserved_features <- c(
-                        # "genome_regions",
-                        # "tad",
-                        # "G_quadruplexes",
-                        # "sl_long",
-                        # "z-dna_motifs",
-                        # "a-phased_repeats",
-                        # "direct_repeats",
-                        # "inverted_repeats",
+                        "genome_regions",
+                        "tad",
+                        "G_quadruplexes",
+                        "sl_long",
+                        "z-dna_motifs",
+                        "a-phased_repeats",
+                        "direct_repeats",
+                        "inverted_repeats",
                         "mirror_repeats",
                         "short_tandem_repeats",
                         "sl_short_chr_1",
@@ -265,10 +360,55 @@ conserved_features <- c(
                         "sl_short_chr_X"
                         )
 
-tissue_specific_features <- c("DNA_methylation",
-                              "histones",
-                              "chromatin_state",
-                              "TF")
+tissue_specific_features <- c(
+  "DNA_methylation_chr_1",
+  "DNA_methylation_chr_2",
+  "DNA_methylation_chr_3",
+  "DNA_methylation_chr_4",
+  "DNA_methylation_chr_5",
+  "DNA_methylation_chr_6",
+  "DNA_methylation_chr_7",
+  "DNA_methylation_chr_8",
+  "DNA_methylation_chr_9",
+  "DNA_methylation_chr_10",
+  "DNA_methylation_chr_11",
+  "DNA_methylation_chr_12",
+  "DNA_methylation_chr_13",
+  "DNA_methylation_chr_14",
+  "DNA_methylation_chr_15",
+  "DNA_methylation_chr_16",
+  "DNA_methylation_chr_17",
+  "DNA_methylation_chr_18",
+  "DNA_methylation_chr_19",
+  "DNA_methylation_chr_20",
+  "DNA_methylation_chr_21",
+  "DNA_methylation_chr_22",
+  "DNA_methylation_chr_X",
+  "histones",
+  "chromatin_state_chr_1",
+  "chromatin_state_chr_2",
+  "chromatin_state_chr_3",
+  "chromatin_state_chr_4",
+  "chromatin_state_chr_5",
+  "chromatin_state_chr_6",
+  "chromatin_state_chr_7",
+  "chromatin_state_chr_8",
+  "chromatin_state_chr_9",
+  "chromatin_state_chr_10",
+  "chromatin_state_chr_11",
+  "chromatin_state_chr_12",
+  "chromatin_state_chr_13",
+  "chromatin_state_chr_14",
+  "chromatin_state_chr_15",
+  "chromatin_state_chr_16",
+  "chromatin_state_chr_17",
+  "chromatin_state_chr_18",
+  "chromatin_state_chr_19",
+  "chromatin_state_chr_20",
+  "chromatin_state_chr_21",
+  "chromatin_state_chr_22",
+  "chromatin_state_chr_X",
+  "TF")
 
 
 ######################### CONSERVED FEATURES
@@ -348,6 +488,9 @@ for (feat in conserved_features){
     
   }
   
+  rm(data)
+  gc()
+  
   setTkProgressBar(pb, i, label = paste(round(i / total * 100, 0), "% done"))
   i <- i + 1
 }
@@ -359,82 +502,102 @@ close(pb)
 
 ######################### TSSUE-SPECIFIC FEATURES
 
+total <- length(tissue_specific_features)
+pb <- tkProgressBar(
+  title = "progress bar",
+  min = 0,
+  max = total,
+  width = 300
+)
+i <- 1
 
-feat <- tissue_specific_features[2]
-
-# read data
-fl <- mapping_files_nm[feat]
-full_path <- paste0(path_to_data_folder, fl)
-data <- read.csv(file=full_path, header = TRUE, stringsAsFactors = FALSE)
-if ("X" %in% names(data)){
-  data$X <- NULL
-}
-if ("V1" %in% names(data)){
-  data$V1 <- NULL
-}
-data$chr <- as.character(data$chr)
-data <- data[data$chr %in% chrs, ]
-
-# create folder for specific features
-new_output_path <- paste0(output_path, feat)
-ifelse(!dir.exists(new_output_path), dir.create(new_output_path), FALSE)
-new_output_path <- paste0(new_output_path, "/")
-
-if (!'feature' %in% names(data)){
-  data$feature <- feat
-}
-
-for (feat_name in unique(data$feature)){
-
-  data_feature <- data[data$feature == feat_name, ]
+for (feat in tissue_specific_features){
+  print(feat)
+  # read data
+  fl <- mapping_files_nm[feat]
+  full_path <- paste0(path_to_data_folder, fl)
+  data <- read.csv(file=full_path, header = TRUE, stringsAsFactors = FALSE)
+  if ("X" %in% names(data)){
+    data$X <- NULL
+  }
+  if ("V1" %in% names(data)){
+    data$V1 <- NULL
+  }
+  data$chr <- as.character(data$chr)
+  data <- data[data$chr %in% chrs, ]
   
-  # get intersection with good bins
-  data_feature$feature <- NULL
+  # create folder for specific features
+  new_output_path <- paste0(output_path, feat)
+  ifelse(!dir.exists(new_output_path), dir.create(new_output_path), FALSE)
+  new_output_path <- paste0(new_output_path, "/")
   
-  cancer_types <- unique(data_feature$cancer_type)
-  all_cancer_data <- data.frame()
-  
-  for (cur_cancer_type in cancer_types){
-    
-    data_feature_cancer <- data_feature[data_feature$cancer_type == cur_cancer_type, ]
-    data_feature_cancer$cancer_type <- NULL
-    # get intersection with good bins
-    data_feature_cancer$feature <- NULL
-    data_intersected <- get_intersection_intervals(bins, data_feature_cancer)
-    names(data_intersected) <- c('chr', 'from', 'to', 'chr_1', 'start', 'end')
-    
-    data_intersected <- data_intersected %>%
-      mutate(
-        corr_start = purrr::pmap_dbl(list(start, from), max),
-        corr_end = purrr::pmap_dbl(list(end, to), min)
-      ) %>% 
-      arrange(chr, from, start)
-    
-    # check if features are overlapping
-    
-    res <- data_intersected %>%
-      group_by(chr) %>%
-      mutate(
-        lag_end = lag(corr_end),
-        lag_chr = lag(chr),
-        lag_from = lag(from)
-      ) %>%
-      mutate(diff = corr_start - lag_end) %>%
-      filter((chr == lag_chr) & (diff < 0) & (from == lag_from))
-    
-    if (nrow(res) == 0){
-      print('no overlappping intervals')
-      all_data <- get_coverage_not_overlapped(data_intersected, win_len, feat_name)
-    } else {
-      print('overlappping intervals')
-      all_data <- get_coverage_overlapped(res, data_intersected, win_len, feat_name)    
-    }
-    
-    all_data$cancer_type <- cur_cancer_type
-    
-    all_cancer_data <- rbind(all_cancer_data, all_data)
+  if (!'feature' %in% names(data)){
+    data$feature <- feat
   }
   
-  write.csv(all_cancer_data, file = paste0(new_output_path, feat_name, "_", win_len, ".csv"))
-
+  for (feat_name in unique(data$feature)){
+  
+    data_feature <- data[data$feature == feat_name, ]
+    
+    # get intersection with good bins
+    data_feature$feature <- NULL
+    
+    cancer_types <- unique(data_feature$cancer_type)
+    all_cancer_data <- data.frame()
+    
+    for (cur_cancer_type in cancer_types){
+      
+      data_feature_cancer <- data_feature[data_feature$cancer_type == cur_cancer_type, ]
+      data_feature_cancer$cancer_type <- NULL
+      # get intersection with good bins
+      data_feature_cancer$feature <- NULL
+      data_intersected <- get_intersection_intervals(bins, data_feature_cancer)
+      names(data_intersected) <- c('chr', 'from', 'to', 'chr_1', 'start', 'end')
+      
+      data_intersected <- data_intersected %>%
+        mutate(
+          corr_start = purrr::pmap_dbl(list(start, from), max),
+          corr_end = purrr::pmap_dbl(list(end, to), min)
+        ) %>% 
+        arrange(chr, from, start)
+      
+      # check if features are overlapping
+      
+      res <- data_intersected %>%
+        group_by(chr) %>%
+        mutate(
+          lag_end = lag(corr_end),
+          lag_chr = lag(chr),
+          lag_from = lag(from)
+        ) %>%
+        mutate(diff = corr_start - lag_end) %>%
+        filter((chr == lag_chr) & (diff < 0) & (from == lag_from))
+      
+      if (nrow(res) == 0){
+        print('no overlappping intervals')
+        all_data <- get_coverage_not_overlapped(data_intersected, win_len, feat_name)
+      } else {
+        print('overlappping intervals')
+        all_data <- get_coverage_overlapped(res, data_intersected, win_len, feat_name)    
+      }
+      
+      all_data$cancer_type <- cur_cancer_type
+      
+      all_cancer_data <- rbind(all_cancer_data, all_data)
+    }
+    
+    write.csv(all_cancer_data, file = paste0(new_output_path, feat_name, "_", 
+                                             format(win_len, scientific = FALSE),".csv"))
+    
+    rm(all_cancer_data)
+    gc()
+  
+  }
+  rm(data)
+  gc()
+  
+  setTkProgressBar(pb, i, label = paste(round(i / total * 100, 0), "% done"))
+  i <- i + 1
 }
+
+close(pb)

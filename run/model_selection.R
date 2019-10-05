@@ -3,20 +3,22 @@ setwd(script_path)
 setwd('..')
 
 library(dplyr)
-library(ggplot2)
-library(randomForest)
-library(caret)
-library(pROC)
-library(doParallel)
 library(reshape2)
-library(ROSE)
+
+library(ggplot2)
+
+library(doParallel)
+
+library(caret)
+library(randomForest)
+library(pls)
+library(ada)
+library(pROC)
 
 n_cores <- 14
 registerDoParallel(n_cores)
 
 set.seed(7)
-
-
 win_len <- 1000000
 
 # load data
@@ -183,8 +185,9 @@ all_target_cols <- grep(x =  hsp_cols, pattern = agg_level, value = TRUE)
 data$sum_targets <- rowSums(data[, all_target_cols])
 all_neg_label <- data[data$sum_targets == 0, ]
 
-
+set.seed(7)
 tr_neg <- createDataPartition(all_neg_label$strata, p = init_ratio, list = FALSE)
+
 neg_data_train <- all_neg_label[tr_neg, ]
 
 all_results <- data.frame()
@@ -192,32 +195,34 @@ all_results <- data.frame()
 for (target_column in all_target_cols){
   
   cancer_pos_label_data <- data[data[target_column] == 1, ]
+  set.seed(7)
   tr_pos <- sample(rownames(cancer_pos_label_data), size = floor(init_ratio * nrow(cancer_pos_label_data)), 
                    replace = FALSE)
+  
   pos_data_train <- cancer_pos_label_data[tr_pos, ]
 
   cancer_type <- strsplit(target_column, "_")[[1]][3]
   all_features_cols <- c(conserved_features, grep(x =  tissue_spec_feats, pattern = cancer_type, value = TRUE))
-  
-  # split on train/test
-  
-  n_repeats <- 10
   
   par_df <- expand.grid(mtry = c(3, 4, 5, 6), 
                         ntree = c(500, 1000), 
                         nodesize = c(30, 50, 70),
                         maxnodes = c(3, 5, 8, 10, 12)
                         )
+  # split on train/test
+  n_repeats <- 30
   
   for (i in seq(1, n_repeats)){
     
     set.seed(i)
-    
     tr_neg <- createDataPartition(neg_data_train$strata, p = train_ratio, list = FALSE)
+
     data_train <- neg_data_train[tr_neg,]
     data_test  <- neg_data_train[-tr_neg,]
     
+    set.seed(i)
     tr_pos <- sample(x = rownames(pos_data_train), size = floor(train_ratio * nrow(pos_data_train)), replace = FALSE)
+    
     te_pos <- setdiff(rownames(pos_data_train), tr_pos)
     data_train <- rbind(data_train, pos_data_train[tr_pos, ])
     data_test <- rbind(data_test, pos_data_train[te_pos, ])
@@ -231,13 +236,19 @@ for (target_column in all_target_cols){
     levels(y_test) <- c("X0", "X1")
     
     # fit models
+    trCtrl <- trainControl(
+      method="none",
+      verboseIter = TRUE,
+      classProbs=TRUE,
+      summaryFunction = twoClassSummary,
+      seeds = seq(1, nrow(par_df)))
     
-    res_iter <- foreach(i=seq(1, nrow(par_df)), .combine = rbind) %dopar% {
+    res_iter <- foreach(j=seq(1, nrow(par_df)), .combine = rbind) %dopar% {
       
-      mtry <- par_df[i, ]$mtry
-      ntree <- par_df[i, ]$ntree
-      nodesize <- par_df[i, ]$nodesize
-      maxnodes <- par_df[i, ]$maxnodes
+      mtry <- par_df[j, ]$mtry
+      ntree <- par_df[j, ]$ntree
+      nodesize <- par_df[j, ]$nodesize
+      maxnodes <- par_df[j, ]$maxnodes
       
       mtryGrid <- expand.grid(mtry = mtry)
       model <- train(
@@ -247,11 +258,7 @@ for (target_column in all_target_cols){
         method = "rf",
         metric="ROC",   
         maximize = TRUE,
-        trControl = trainControl(
-          method="none",
-          verboseIter = TRUE,
-          classProbs=TRUE,
-          summaryFunction = twoClassSummary),
+        trControl = trCtrl,
         ntree = ntree,
         nodesize = nodesize,
         maxnodes = maxnodes,
@@ -278,9 +285,9 @@ for (target_column in all_target_cols){
 }
 
 all_results$diff_auc <- all_results$tr_auc - all_results$te_auc
-write.csv(all_results, file = "data/hp_rf.csv")
+write.csv(all_results, file = "data/output/hp_rf.csv")
 
-all_results <- read.csv("data/hp_rf.csv")
+all_results <- read.csv("data/output/hp_rf.csv")
 res_all <- all_results %>%
   group_by(cancer_type) %>%
   summarize(
@@ -371,7 +378,7 @@ ggplot(opt_pars, aes(te_auc)) +
 
 
 ######## REMOVE CORRELATED FEATURES WITH PLS AND AGAIN TUNE RANDOM FOREST
-library(pls)
+
 # https://www.kaggle.com/sasali/notebook83cb3b1069#PLS---RF(customized-caret-train-function)
 
 PlsRf <- list(label = "PLS-RF", type = "Classification",
@@ -463,7 +470,7 @@ for (target_column in all_target_cols){
   
   # split on train/test
   
-  n_repeats <- 10
+  n_repeats <- 30
   
   par_df <- expand.grid(mtry = c(2, 3, 4), 
                         ntree = c(500, 1000), 
@@ -546,10 +553,10 @@ for (target_column in all_target_cols){
 }
 
 all_results$diff_auc <- all_results$tr_auc - all_results$te_auc
-write.csv(all_results, file = "data/hp_rf_pls.csv")
+write.csv(all_results, file = "data/output/hp_rf_pls.csv")
 
 
-all_results <- read.csv("data/hp_rf_pls.csv")
+all_results <- read.csv("data/output/hp_rf_pls.csv")
 res_all <- all_results %>%
   group_by(cancer_type) %>%
   summarize(
@@ -690,7 +697,7 @@ for (target_column in all_target_cols){
   
   # split on train/test
   
-  n_repeats <- 10
+  n_repeats <- 30
   
   par_df <- expand.grid(mtry = c(2, 3, 4), 
                         ntree = c(500, 1000), 
@@ -771,9 +778,9 @@ for (target_column in all_target_cols){
   
 }
 all_results$diff_auc <- all_results$tr_auc - all_results$te_auc
-write.csv(all_results, file = "data/hp_rf_pca.csv")
+write.csv(all_results, file = "data/output/hp_rf_pca.csv")
 
-all_results <- read.csv("data/hp_rf_pca.csv")
+all_results <- read.csv("data/output/hp_rf_pca.csv")
 res_all <- all_results %>%
   group_by(cancer_type) %>%
   summarize(
@@ -865,7 +872,7 @@ ggplot(opt_pars, aes(te_auc)) +
 
 
 ########################### ADABOOST
-library(ada)
+
 # discrete adaboost with classification trees, exponential loss 
 
 agg_level <- "_99._"
@@ -916,7 +923,7 @@ for (target_column in all_target_cols){
   
   # split on train/test
   
-  n_repeats <- 10
+  n_repeats <- 30
   
   par_df <- expand.grid(nu = c(1, 0.1, 2), 
                         iter = c(10, 50, 100, 500), 
@@ -987,9 +994,9 @@ for (target_column in all_target_cols){
 }
 
 all_results$diff_auc <- all_results$tr_auc - all_results$te_auc
-write.csv(all_results, file = "data/hp_ada.csv")
+write.csv(all_results, file = "data/output/hp_ada.csv")
 
-all_results <- read.csv("data/hp_ada.csv")
+all_results <- read.csv("data/output/hp_ada.csv")
 res_all <- all_results %>%
   group_by(cancer_type) %>%
   summarize(
@@ -1079,248 +1086,3 @@ ggplot(opt_pars, aes(te_auc)) +
 
 
 
-############################### CHECK NEW FEATURES
-source("run/features.R")
-
-data <- read.csv("data/datasets/dataset_10000.csv")
-
-hsp_cols <- grep(x = names(data), pattern = "hsp", value = TRUE)
-ss_cols <- c ("chr", "from", "to")
-features_cols <- setdiff(names(data), c(ss_cols, hsp_cols))
-
-all_data <- get_binary_features(data[features_cols])
-# binary as factors???????????????????
-all_data <- get_higher_level_features(data=data, features_cols = features_cols, win_len_upper = 100000, 
-                                      path_to_upper_data = "data/datasets/dataset_100000.csv")
-
-
-
-
-
-
-get_train_test_split <- function(data, target_col, start_pos_col, chr_col, feature_cols, train_ratio, seed){
-  
-  set.seed(seed)
-  
-  chrs <- c(
-    "1","2","3","4","5","6","7","8","9","10",
-    "11","12","13","14","15","16","17","18","19","20","21","22","X"
-  )
-  data[chr_col] <- as.character(data[chr_col])
-  
-  # get position bins
-  all_pos_map <- data.frame()
-  
-  for (chr in chrs){
-    starts <- data[data[chr_col] == chr, start_pos_col]
-    starts <- starts[order(starts)]
-    bin_name <- cut(starts, breaks = 4, labels = c("first_bin", "second_bin", "third_bin", "last_bin"),
-                    include.lowest = TRUE, right = FALSE)
-    pos_map <- data.frame(start = starts, pos_bin = bin_name, chr = chr)
-    names(pos_map) <- c(start_pos_col, "pos_bin", chr_col)
-    all_pos_map <- rbind(all_pos_map, pos_map)
-  }
-  all_pos_map[chr_col] <- as.character(all_pos_map[chr_col])
-  data <- data %>%
-    inner_join(all_pos_map, by = c(!!as.name(chr_col), !!as.name(start_pos_col)))
-  
-  # create strata column by chromosome and quantile of position in chromosome
-  data['strata'] <- paste0(data[chr_col], "_", data['pos_bin'])
-  
-  # split data on examples with positive and negative target
-  rownames(data) <- NULL
-  pos_label_data <- data[data[target_col] == 1, ]
-  neg_label_data <- data[data[target_col] == 0, ]
-
-  # split in train_ratio proportion stratified by strata column
-  tr_neg <- createDataPartition(neg_label_data$strata, p = train_ratio, list = FALSE)
-  data_train <- neg_label_data[tr_neg,]
-  data_test  <- neg_label_data[-tr_neg,]
-
-  tr_pos <- createDataPartition(pos_label_data$strata, p = train_ratio, list = FALSE)
-  data_train <- rbind(data_train, pos_label_data[tr_pos, ])
-  data_test <- rbind(data_test, pos_label_data[te_pos, ])
-
-  x_train <- data_train[feature_cols]
-  x_test <- data_test[feature_cols]
-
-  y_train <- as.factor(data_train[, target_col])
-  levels(y_train) <- c("X0", "X1")
-  y_test <- as.factor(data_test[, target_col])
-  levels(y_test) <- c("X0", "X1")
-  
-  all_data <- list()
-  all_data[[1]] <- x_train
-  all_data[[2]] <- y_train
-  all_data[[3]] <- x_test
-  all_data[[4]] <- y_test
-  
-  names(all_data) <- c("x_train", "y_train", "x_test", "y_test")
-  
-  return(all_data)
-}
-
-
-
-
-
-
-
-
-
-############ APPLY BEST SELECTED MODELS ITERATIVELY ON ALL DATA AS USUAL - GET CLASSIFICATION BENCHMARK
-
-
-
-
-
-
-############ PU LEARNING
-# https://phys.org/news/2018-11-smarter-aimachine-negative.html
-# https://www.researchgate.net/publication/4348735_Learning_from_Positive_and_Unlabeled_Examples_A_Survey
-# https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2248178/
-# https://link.springer.com/chapter/10.1007/978-3-319-14717-8_45
-# http://members.cbio.mines-paristech.fr/~jvert/svn/bibli/local/Pelckmans2009Transductively.pdf
-# https://www.comp.nus.edu.sg/~leews/publications/noisyicml.pdf
-
-# https://medium.com/neuralspace/bayesian-neural-network-series-post-1-need-for-bayesian-networks-e209e66b70b2
-
-# https://stackoverflow.com/questions/20150525/stratified-sampling-doesnt-seem-to-change-randomforest-results/20151341#20151341
-# https://www.r-bloggers.com/handling-class-imbalance-with-r-and-caret-an-introduction/
-
-# https://topepo.github.io/caret/adaptive-resampling.html
-# https://topepo.github.io/caret/feature-selection-using-simulated-annealing.html
-# https://topepo.github.io/caret/train-models-by-tag.html#bayesian-model
-# https://topepo.github.io/caret/train-models-by-tag.html#oblique-tree
-# https://topepo.github.io/caret/models-clustered-by-tag-similarity.html
-
-
-
-# ROSE (BAD TRY - GENERATED EXAMPLES ARE TOO DIFFERENT FROM NEGATIVIES AND SIMILAR TO ORIGINAL)
-agg_level <- "_99._"
-neg_train_ratio <- 0.5
-pos_train_ratio <- 0.7
-
-shuffle_train_ratio <- 0.7
-
-chrs <-
-  c(
-    "1","2","3","4","5","6","7","8","9","10",
-    "11","12","13","14","15","16","17","18","19","20","21","22","X"
-  )
-data$chr <- as.character(data$chr)
-all_pos_map <- data.frame()
-for (chr in chrs){
-  starts <- data[data$chr == chr, 'from']
-  starts <- starts[order(starts)]
-  bin_name <- cut(starts, breaks = 4, labels = c("first_bin","second_bin","third_bin","last_bin"),
-                  include.lowest = TRUE, right = FALSE)
-  pos_map <- data.frame(from = starts, pos_bin = bin_name, chr = chr)
-  all_pos_map <- rbind(all_pos_map, pos_map)
-}
-all_pos_map$chr <- as.character(all_pos_map$chr)
-data <- data %>%
-  inner_join(all_pos_map, by=c("chr","from"))
-
-data$strata <- paste0(data$chr, "_", data$pos_bin)
-
-all_target_cols <- grep(x =  hsp_cols, pattern = agg_level, value = TRUE)
-
-data$sum_targets <- rowSums(data[, all_target_cols])
-all_neg_label <- data[data$sum_targets == 0, ]
-
-
-tr_neg <- createDataPartition(all_neg_label$strata, p = neg_train_ratio, list = FALSE)
-neg_data_train <- all_neg_label[tr_neg, ]
-
-target_column <- all_target_cols[1]
-
-for (target_column in all_target_cols){
-  
-  cancer_pos_label_data <- data[data[target_column] == 1, ]
-  tr_pos <- sample(rownames(cancer_pos_label_data), size = floor(pos_train_ratio * nrow(cancer_pos_label_data)), 
-                   replace = FALSE)
-  pos_data_train <- cancer_pos_label_data[tr_pos, ]
-  all_data_train <- rbind(neg_data_train, pos_data_train)
-  
-  cancer_type <- strsplit(target_column, "_")[[1]][3]
-  all_features_cols <- c(conserved_features, grep(x =  tissue_spec_feats, pattern = cancer_type, value = TRUE))
-  
-  rose_train <- ROSE(
-    formula = as.formula(paste0(target_column, " ~ ", paste0(all_features_cols, collapse = " + "))), 
-    data = all_data_train,
-    N = nrow(pos_data_train),
-    p = 0.9,
-    seed = 95
-  )$data 
-  
-  cols <- c(target_column, all_features_cols,"strata")
-  rose_train$strata <- "0"
-  synth_data <- rbind(rose_train[, cols], neg_data_train[, cols])
-  synth_data$strata
-  
-  # split synthetized data on train/test
-  rownames(synth_data) <- NULL
-  
-  pos_label_data <- synth_data[synth_data[target_column] == 1, ]
-  neg_label_data <- synth_data[(synth_data[target_column] == 0) & (synth_data$strata != "0"),  ]
-  
-  n_repeats <- 10
-  #########################
-  tr_neg <- createDataPartition(neg_label_data$strata, p = shuffle_train_ratio, list = FALSE)
-  data_train <- neg_label_data[tr_neg,]
-  data_test  <- neg_label_data[-tr_neg,]
-  
-  tr_pos <- sample(x = rownames(pos_label_data), size = floor(shuffle_train_ratio * nrow(pos_label_data)), replace = FALSE)
-  te_pos <- setdiff(rownames(pos_label_data), tr_pos)
-  data_train <- rbind(data_train, pos_label_data[tr_pos, ])
-  data_test <- rbind(data_test, pos_label_data[te_pos, ])
-  
-  x_train <- data_train[all_features_cols]
-  x_test <- data_test[all_features_cols]
-  
-  y_train <- as.factor(data_train[, target_column])
-  levels(y_train) <- c("X0", "X1")
-  y_test <- as.factor(data_test[, target_column])
-  levels(y_test) <- c("X0", "X1")
-  
-  # fit models
-  par_df <- expand.grid(mtry = c(3, 6), 
-                        ntree = c(10, 50, 100),
-                        nodesize = c(10, 20, 30))
-  
-  res_iter <- foreach(i=seq(1, nrow(par_df)), .combine = rbind) %dopar% {
-    
-    mtry <- par_df[i, ]$mtry
-    ntree <- par_df[i, ]$ntree
-    nodesize <- par_df[i, ]$nodesize
-    
-    mtryGrid <- expand.grid(mtry = mtry)
-    model <- train(
-      x = x_train, 
-      y = y_train,
-      preProcess = c("YeoJohnson", "center", "scale"),
-      method = "rf",
-      metric="ROC",   
-      maximize = TRUE,
-      trControl = trainControl(
-        method="none",
-        verboseIter = TRUE,
-        classProbs=TRUE,
-        summaryFunction = twoClassSummary),
-      ntree = ntree,
-      nodesize = nodesize,
-      sampsize = c(X0 = floor(length(tr_pos) * 5), X1 = length(tr_pos)),
-      tuneGrid = mtryGrid
-    )
-    
-    train_pred <- predict(model, newdata = x_train, type = "prob")
-    test_pred <- predict(model, newdata = x_test, type = "prob")
-    
-    tr_auc <- auc(y_train, train_pred[, 2]) 
-    te_auc <- auc(y_test, test_pred[, 2]) 
-    
-    out_df <- data.frame(mtry = mtry, ntree = ntree, nodesize = nodesize, tr_auc = tr_auc, te_auc = te_auc, iter = i)
-    return(out_df)
-  }
-}

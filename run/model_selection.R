@@ -15,6 +15,8 @@ library(pls)
 library(ada)
 library(pROC)
 
+source("run/tools.R")
+
 n_cores <- 14
 registerDoParallel(n_cores)
 
@@ -154,7 +156,6 @@ ggplot(roc_auc_data, aes(x=train_auc, y=test_auc)) +
 
 
 ####################################### MODEL SELECTION FOR RANDOM FOREST
-
 agg_level <- "_99._"
 init_ratio <- 0.5
 train_ratio <- 0.7
@@ -187,7 +188,6 @@ all_neg_label <- data[data$sum_targets == 0, ]
 
 set.seed(7)
 tr_neg <- createDataPartition(all_neg_label$strata, p = init_ratio, list = FALSE)
-
 neg_data_train <- all_neg_label[tr_neg, ]
 
 all_results <- data.frame()
@@ -198,7 +198,6 @@ for (target_column in all_target_cols){
   set.seed(7)
   tr_pos <- sample(rownames(cancer_pos_label_data), size = floor(init_ratio * nrow(cancer_pos_label_data)), 
                    replace = FALSE)
-  
   pos_data_train <- cancer_pos_label_data[tr_pos, ]
 
   cancer_type <- strsplit(target_column, "_")[[1]][3]
@@ -235,6 +234,13 @@ for (target_column in all_target_cols){
     y_test <- as.factor(data_test[, target_column])
     levels(y_test) <- c("X0", "X1")
     
+    
+    # limit outliers
+    data_tr <- limit_outliers(x_train = x_train, x_test = x_test, 
+                              features = all_features_cols, iqr_multiplicator = 3)
+    x_train <- data_tr[['train']]
+    x_test <- data_tr[['test']]
+    
     # fit models
     trCtrl <- trainControl(
       method="none",
@@ -242,6 +248,7 @@ for (target_column in all_target_cols){
       classProbs=TRUE,
       summaryFunction = twoClassSummary,
       seeds = seq(1, nrow(par_df)))
+    # set "seeds" parameters to make results reproducible
     
     res_iter <- foreach(j=seq(1, nrow(par_df)), .combine = rbind) %dopar% {
       
@@ -272,7 +279,10 @@ for (target_column in all_target_cols){
       tr_auc <- auc(y_train, train_pred[, 2]) 
       te_auc <- auc(y_test, test_pred[, 2]) 
       
-      out_df <- data.frame(mtry = mtry, ntree = ntree, nodesize = nodesize, maxnodes = maxnodes, tr_auc = tr_auc, te_auc = te_auc, iter = i)
+      out_df <- data.frame(
+        mtry = mtry, ntree = ntree, nodesize = nodesize, maxnodes = maxnodes,
+        tr_auc = tr_auc, te_auc = te_auc, iter = j)
+      
       return(out_df)
     }
     
@@ -281,13 +291,13 @@ for (target_column in all_target_cols){
     all_results <- rbind(all_results, res_iter)
     
   }
-
+  
 }
 
 all_results$diff_auc <- all_results$tr_auc - all_results$te_auc
-write.csv(all_results, file = "data/output/hp_rf.csv")
+write.csv(all_results, file = "data/output/hp_rf_lo.csv")
 
-all_results <- read.csv("data/output/hp_rf.csv")
+all_results <- read.csv("data/output/hp_rf_lo.csv")
 res_all <- all_results %>%
   group_by(cancer_type) %>%
   summarize(
@@ -299,8 +309,10 @@ res_all <- all_results %>%
   ) %>%
   arrange(cancer_type)
 
+good_cancers_nm <- c("breast", "prostate")
+
 pred_cancers_data <- all_results %>%
-  filter(cancer_type %in% c("breast", "ovary", "prostate", "brain")) 
+  filter(cancer_type %in% good_cancers_nm) 
 
 ggplot(pred_cancers_data, aes(te_auc)) + 
   geom_density(alpha = 0.5) + 
@@ -311,7 +323,7 @@ ggplot(all_results, aes(te_auc)) +
   facet_wrap(~ cancer_type)
 
 all_results %>%
-  filter(cancer_type %in% c('brain', 'breast', 'ovary','prostate')) %>%
+  filter(cancer_type %in% good_cancers_nm) %>%
   group_by(ntree) %>%
   summarize(
     min_te_auc = min(te_auc),
@@ -335,6 +347,7 @@ gb_pars <- pred_cancers_data %>%
     med_rank = dense_rank(med),
     sd_rank = ntile(sd, 5)
   ) 
+
 gb_pars <- gb_pars %>%
   group_by(ntree, nodesize, maxnodes, mtry) %>%
   summarize(
@@ -348,12 +361,13 @@ gb_pars %>%
   ungroup() %>%
   filter(summed_rank == min(summed_rank))
 
+
 opt_pars <- all_results %>%
   filter(
-    nodesize == 50,
-    ntree == 500,
+    nodesize == 70,
+    ntree == 1000,
     maxnodes == 10,
-    mtry == 6
+    mtry == 5
   )
 
 res_opt <- opt_pars %>%
@@ -452,7 +466,7 @@ all_target_cols <- grep(x =  hsp_cols, pattern = agg_level, value = TRUE)
 data$sum_targets <- rowSums(data[, all_target_cols])
 all_neg_label <- data[data$sum_targets == 0, ]
 
-
+set.seed(7)
 tr_neg <- createDataPartition(all_neg_label$strata, p = init_ratio, list = FALSE)
 neg_data_train <- all_neg_label[tr_neg, ]
 
@@ -461,16 +475,13 @@ all_results <- data.frame()
 for (target_column in all_target_cols){
   
   cancer_pos_label_data <- data[data[target_column] == 1, ]
+  set.seed(7)
   tr_pos <- sample(rownames(cancer_pos_label_data), size = floor(init_ratio * nrow(cancer_pos_label_data)), 
                    replace = FALSE)
   pos_data_train <- cancer_pos_label_data[tr_pos, ]
   
   cancer_type <- strsplit(target_column, "_")[[1]][3]
   all_features_cols <- c(conserved_features, grep(x =  tissue_spec_feats, pattern = cancer_type, value = TRUE))
-  
-  # split on train/test
-  
-  n_repeats <- 30
   
   par_df <- expand.grid(mtry = c(2, 3, 4), 
                         ntree = c(500, 1000), 
@@ -479,14 +490,17 @@ for (target_column in all_target_cols){
                         ncomp = c(5, 10, 15)
   )
   
+  # split on train/test
+  n_repeats <- 30
+  
   for (i in seq(1, n_repeats)){
     
     set.seed(i)
-    
     tr_neg <- createDataPartition(neg_data_train$strata, p = train_ratio, list = FALSE)
     data_train <- neg_data_train[tr_neg,]
     data_test  <- neg_data_train[-tr_neg,]
     
+    set.seed(i)    
     tr_pos <- sample(x = rownames(pos_data_train), size = floor(train_ratio * nrow(pos_data_train)), replace = FALSE)
     te_pos <- setdiff(rownames(pos_data_train), tr_pos)
     data_train <- rbind(data_train, pos_data_train[tr_pos, ])
@@ -500,15 +514,27 @@ for (target_column in all_target_cols){
     y_test <- as.factor(data_test[, target_column])
     levels(y_test) <- c("X0", "X1")
     
-    # fit models
+    # limit outliers
+    data_tr <- limit_outliers(x_train = x_train, x_test = x_test, 
+                              features = all_features_cols, iqr_multiplicator = 3)
+    x_train <- data_tr[['train']]
+    x_test <- data_tr[['test']]
     
-    res_iter <- foreach(i=seq(1, nrow(par_df)), .combine = rbind) %dopar% {
+    # fit models
+    trCtrl <- trainControl(
+      method="none",
+      verboseIter = TRUE,
+      classProbs=TRUE,
+      summaryFunction = twoClassSummary,
+      seeds = seq(1, nrow(par_df)))
+    
+    res_iter <- foreach(j=seq(1, nrow(par_df)), .combine = rbind) %dopar% {
       
-      mtry <- par_df[i, ]$mtry
-      ntree <- par_df[i, ]$ntree
-      nodesize <- par_df[i, ]$nodesize
-      maxnodes <- par_df[i, ]$maxnodes
-      ncomp <- par_df[i, ]$ncomp
+      mtry <- par_df[j, ]$mtry
+      ntree <- par_df[j, ]$ntree
+      nodesize <- par_df[j, ]$nodesize
+      maxnodes <- par_df[j, ]$maxnodes
+      ncomp <- par_df[j, ]$ncomp
       
       mtryGrid <- expand.grid(
         mtry = mtry,
@@ -525,11 +551,7 @@ for (target_column in all_target_cols){
         method = PlsRf,
         metric="ROC",   
         maximize = TRUE,
-        trControl = trainControl(
-          method="none",
-          verboseIter = TRUE,
-          classProbs=TRUE,
-          summaryFunction = twoClassSummary),
+        trControl = trCtrl,
         sampsize = c(X0 = floor(length(tr_pos) * 5), X1 = length(tr_pos)),
         tuneGrid = mtryGrid
       )
@@ -540,7 +562,10 @@ for (target_column in all_target_cols){
       tr_auc <- auc(y_train, train_pred[, 2]) 
       te_auc <- auc(y_test, test_pred[, 2]) 
       
-      out_df <- data.frame(mtry = mtry, ntree = ntree, nodesize = nodesize, maxnodes = maxnodes, ncomp = ncomp, tr_auc = tr_auc, te_auc = te_auc, iter = i)
+      out_df <- data.frame(
+        mtry = mtry, ntree = ntree, nodesize = nodesize, maxnodes = maxnodes, 
+        ncomp = ncomp, tr_auc = tr_auc, te_auc = te_auc, iter = j)
+      
       return(out_df)
     }
     
@@ -553,10 +578,10 @@ for (target_column in all_target_cols){
 }
 
 all_results$diff_auc <- all_results$tr_auc - all_results$te_auc
-write.csv(all_results, file = "data/output/hp_rf_pls.csv")
+write.csv(all_results, file = "data/output/hp_rf_pls_lo.csv")
 
 
-all_results <- read.csv("data/output/hp_rf_pls.csv")
+all_results <- read.csv("data/output/hp_rf_pls_lo.csv")
 res_all <- all_results %>%
   group_by(cancer_type) %>%
   summarize(
@@ -679,7 +704,7 @@ all_target_cols <- grep(x =  hsp_cols, pattern = agg_level, value = TRUE)
 data$sum_targets <- rowSums(data[, all_target_cols])
 all_neg_label <- data[data$sum_targets == 0, ]
 
-
+set.seed(7)
 tr_neg <- createDataPartition(all_neg_label$strata, p = init_ratio, list = FALSE)
 neg_data_train <- all_neg_label[tr_neg, ]
 
@@ -687,6 +712,7 @@ all_results <- data.frame()
 
 for (target_column in all_target_cols){
   
+  set.seed(7)
   cancer_pos_label_data <- data[data[target_column] == 1, ]
   tr_pos <- sample(rownames(cancer_pos_label_data), size = floor(init_ratio * nrow(cancer_pos_label_data)), 
                    replace = FALSE)
@@ -694,11 +720,7 @@ for (target_column in all_target_cols){
   
   cancer_type <- strsplit(target_column, "_")[[1]][3]
   all_features_cols <- c(conserved_features, grep(x =  tissue_spec_feats, pattern = cancer_type, value = TRUE))
-  
-  # split on train/test
-  
-  n_repeats <- 30
-  
+
   par_df <- expand.grid(mtry = c(2, 3, 4), 
                         ntree = c(500, 1000), 
                         nodesize = c(50, 70),
@@ -706,14 +728,17 @@ for (target_column in all_target_cols){
                         pcaComp = c(5, 10, 15)
   )
   
+  # split on train/test
+  n_repeats <- 30
+  
   for (i in seq(1, n_repeats)){
     
     set.seed(i)
-    
     tr_neg <- createDataPartition(neg_data_train$strata, p = train_ratio, list = FALSE)
     data_train <- neg_data_train[tr_neg,]
     data_test  <- neg_data_train[-tr_neg,]
     
+    set.seed(i)
     tr_pos <- sample(x = rownames(pos_data_train), size = floor(train_ratio * nrow(pos_data_train)), replace = FALSE)
     te_pos <- setdiff(rownames(pos_data_train), tr_pos)
     data_train <- rbind(data_train, pos_data_train[tr_pos, ])
@@ -727,15 +752,20 @@ for (target_column in all_target_cols){
     y_test <- as.factor(data_test[, target_column])
     levels(y_test) <- c("X0", "X1")
     
-    # fit models
+    # limit outliers
+    data_tr <- limit_outliers(x_train = x_train, x_test = x_test, 
+                              features = all_features_cols, iqr_multiplicator = 3)
+    x_train <- data_tr[['train']]
+    x_test <- data_tr[['test']]
     
-    res_iter <- foreach(i=seq(1, nrow(par_df)), .combine = rbind) %dopar% {
+    # fit models
+    res_iter <- foreach(j=seq(1, nrow(par_df)), .combine = rbind) %dopar% {
       
-      mtry <- par_df[i, ]$mtry
-      ntree <- par_df[i, ]$ntree
-      nodesize <- par_df[i, ]$nodesize
-      maxnodes <- par_df[i, ]$maxnodes
-      pcaComp <- par_df[i, ]$pcaComp
+      mtry <- par_df[j, ]$mtry
+      ntree <- par_df[j, ]$ntree
+      nodesize <- par_df[j, ]$nodesize
+      maxnodes <- par_df[j, ]$maxnodes
+      pcaComp <- par_df[j, ]$pcaComp
       
       mtryGrid <- expand.grid(mtry = mtry)
       model <- train(
@@ -750,7 +780,8 @@ for (target_column in all_target_cols){
           verboseIter = TRUE,
           classProbs=TRUE,
           summaryFunction = twoClassSummary,
-          preProcOptions = list(pcaComp = pcaComp)
+          preProcOptions = list(pcaComp = pcaComp),
+          seeds = seq(1, nrow(par_df))
           ),
         ntree = ntree,
         nodesize = nodesize,
@@ -765,8 +796,10 @@ for (target_column in all_target_cols){
       tr_auc <- auc(y_train, train_pred[, 2]) 
       te_auc <- auc(y_test, test_pred[, 2]) 
       
-      out_df <- data.frame(mtry = mtry, ntree = ntree, nodesize = nodesize, maxnodes = maxnodes, pcaComp = pcaComp,
-                           tr_auc = tr_auc, te_auc = te_auc, iter = i)
+      out_df <- data.frame(
+        mtry = mtry, ntree = ntree, nodesize = nodesize, maxnodes = maxnodes, pcaComp = pcaComp,
+        tr_auc = tr_auc, te_auc = te_auc, iter = j)
+      
       return(out_df)
     }
     
@@ -778,9 +811,9 @@ for (target_column in all_target_cols){
   
 }
 all_results$diff_auc <- all_results$tr_auc - all_results$te_auc
-write.csv(all_results, file = "data/output/hp_rf_pca.csv")
+write.csv(all_results, file = "data/output/hp_rf_pca_lo.csv")
 
-all_results <- read.csv("data/output/hp_rf_pca.csv")
+all_results <- read.csv("data/output/hp_rf_pca_lo.csv")
 res_all <- all_results %>%
   group_by(cancer_type) %>%
   summarize(
@@ -844,7 +877,7 @@ gb_pars %>%
 opt_pars <- all_results %>%
   filter(
     nodesize == 50,
-    ntree == 500,
+    ntree == 1000,
     maxnodes == 8,
     mtry == 3,
     pcaComp == 5
@@ -905,15 +938,23 @@ all_target_cols <- grep(x =  hsp_cols, pattern = agg_level, value = TRUE)
 data$sum_targets <- rowSums(data[, all_target_cols])
 all_neg_label <- data[data$sum_targets == 0, ]
 
-
+set.seed(7)
 tr_neg <- createDataPartition(all_neg_label$strata, p = init_ratio, list = FALSE)
 neg_data_train <- all_neg_label[tr_neg, ]
 
 all_results <- data.frame()
+all_target_cols <- all_target_cols[!(all_target_cols %in% c("hsp_99._brain", 
+                                                            "hsp_99._blood",
+                                                            "hsp_99._bone",
+                                                            "hsp_99._breast",
+                                                            "hsp_99._liver",
+                                                            "hsp_99._ovary",
+                                                            "hsp_99._pancreatic"))]
 
 for (target_column in all_target_cols){
   
   cancer_pos_label_data <- data[data[target_column] == 1, ]
+  set.seed(7)
   tr_pos <- sample(rownames(cancer_pos_label_data), size = floor(init_ratio * nrow(cancer_pos_label_data)), 
                    replace = FALSE)
   pos_data_train <- cancer_pos_label_data[tr_pos, ]
@@ -921,23 +962,23 @@ for (target_column in all_target_cols){
   cancer_type <- strsplit(target_column, "_")[[1]][3]
   all_features_cols <- c(conserved_features, grep(x =  tissue_spec_feats, pattern = cancer_type, value = TRUE))
   
-  # split on train/test
-  
-  n_repeats <- 30
   
   par_df <- expand.grid(nu = c(1, 0.1, 2), 
                         iter = c(10, 50, 100, 500), 
                         maxdepth = c(2, 3, 4)
-  )
+  )  
   
-  for (i in seq(1, n_repeats)){
+  # split on train/test
+  n_repeats <- 30
+
+  for (i in seq(22, n_repeats)){
     
     set.seed(i)
-    
     tr_neg <- createDataPartition(neg_data_train$strata, p = train_ratio, list = FALSE)
     data_train <- neg_data_train[tr_neg,]
     data_test  <- neg_data_train[-tr_neg,]
     
+    set.seed(i)    
     tr_pos <- sample(x = rownames(pos_data_train), size = floor(train_ratio * nrow(pos_data_train)), replace = FALSE)
     te_pos <- setdiff(rownames(pos_data_train), tr_pos)
     data_train <- rbind(data_train, pos_data_train[tr_pos, ])
@@ -951,13 +992,25 @@ for (target_column in all_target_cols){
     y_test <- as.factor(data_test[, target_column])
     levels(y_test) <- c("X0", "X1")
     
-    # fit models
+    # limit outliers
+    data_tr <- limit_outliers(x_train = x_train, x_test = x_test, 
+                              features = all_features_cols, iqr_multiplicator = 3)
+    x_train <- data_tr[['train']]
+    x_test <- data_tr[['test']]
     
-    res_iter <- foreach(i=seq(1, nrow(par_df)), .combine = rbind) %dopar% {
+    # fit models
+    trCtrl <- trainControl(
+      method="none",
+      verboseIter = TRUE,
+      classProbs=TRUE,
+      summaryFunction = twoClassSummary,
+      seeds = seq(1, nrow(par_df)))
+    
+    res_iter <- foreach(j=seq(1, nrow(par_df)), .combine = rbind) %dopar% {
 
-      iter <- par_df[i, ]$iter
-      maxdepth <- par_df[i, ]$maxdepth
-      nu <- par_df[i, ]$nu
+      iter <- par_df[j, ]$iter
+      maxdepth <- par_df[j, ]$maxdepth
+      nu <- par_df[j, ]$nu
       
       iterGrid <- expand.grid(iter = iter, maxdepth = maxdepth, nu = nu)
       model <- train(
@@ -967,11 +1020,7 @@ for (target_column in all_target_cols){
         method = "ada",
         metric="ROC",   
         maximize = TRUE,
-        trControl = trainControl(
-          method="none",
-          verboseIter = TRUE,
-          classProbs=TRUE,
-          summaryFunction = twoClassSummary),
+        trControl = trCtrl,
         tuneGrid = iterGrid
       )
 
@@ -981,7 +1030,8 @@ for (target_column in all_target_cols){
       tr_auc <- auc(y_train, train_pred[, 2]) 
       te_auc <- auc(y_test, test_pred[, 2]) 
       
-      out_df <- data.frame(ntrees = iter, maxdepth = maxdepth, nu = nu, tr_auc = tr_auc, te_auc = te_auc, iter = i)
+      out_df <- data.frame(
+        ntrees = iter, maxdepth = maxdepth, nu = nu, tr_auc = tr_auc, te_auc = te_auc, iter = j)
       return(out_df)
     }
     
@@ -994,9 +1044,9 @@ for (target_column in all_target_cols){
 }
 
 all_results$diff_auc <- all_results$tr_auc - all_results$te_auc
-write.csv(all_results, file = "data/output/hp_ada.csv")
+write.csv(all_results, file = "data/output/hp_ada_lo_rest_new_1.csv")
 
-all_results <- read.csv("data/output/hp_ada.csv")
+all_results <- read.csv("data/output/hp_ada_lo.csv")
 res_all <- all_results %>%
   group_by(cancer_type) %>%
   summarize(

@@ -49,113 +49,7 @@ tissue_spec_feats <- setdiff(names(data), c("chr","from","to", hsp_cols, conserv
 
 
 
-# BUILD ONE MODEL
-# select agg_level and cancer_type
-agg_level <- "_99._"
-cancer_type <- 'liver'
-target_col <- grep(x = grep(x =  hsp_cols, pattern = agg_level, value = TRUE), pattern = cancer_type, value = TRUE)
-all_features_cols <- c(conserved_features, grep(x =  tissue_spec_feats, pattern = cancer_type, value = TRUE))
-
-
-# create strata for train/test split
-chrs <-
-  c(
-    "1","2","3","4","5","6","7","8","9","10",
-    "11","12","13","14","15","16","17","18","19","20","21","22","X"
-  )
-data$chr <- as.character(data$chr)
-all_pos_map <- data.frame()
-for (chr in chrs){
-  starts <- data[data$chr == chr, 'from']
-  starts <- starts[order(starts)]
-  bin_name <- cut(starts, breaks = 4, labels = c("first_bin","second_bin","third_bin","last_bin"),
-      include.lowest = TRUE, right = FALSE)
-  pos_map <- data.frame(from = starts, pos_bin = bin_name, chr = chr)
-  all_pos_map <- rbind(all_pos_map, pos_map)
-}
-all_pos_map$chr <- as.character(all_pos_map$chr)
-data <- data %>%
-  inner_join(all_pos_map, by=c("chr","from"))
-
-data$strata <- paste0(data$chr, "_", data$pos_bin)
-
-train_ratio <- 0.7
-
-rownames(data) <- NULL
-pos_label_data <- data[data[target_col] == 1, ]
-neg_label_data <- data[data[target_col] == 0, ]
-
-n_repeats <- 100
-
-res_models <- foreach(i = seq(1, n_repeats), .packages=c('randomForest','pROC', 'caret')) %dopar% { 
-  
-  set.seed(i)
-  
-  # train/test data
-  tr_neg <- createDataPartition(neg_label_data$strata, p = train_ratio, list = FALSE)
-  data_train <- neg_label_data[tr_neg,]
-  data_test  <- neg_label_data[-tr_neg,]
-  
-  tr_pos <- sample(x = rownames(pos_label_data), size = floor(train_ratio * nrow(pos_label_data)), replace = FALSE)
-  te_pos <- setdiff(rownames(pos_label_data), tr_pos)
-  data_train <- rbind(data_train, pos_label_data[tr_pos, ])
-  data_test <- rbind(data_test, pos_label_data[te_pos, ])
-  
-  x_train <- data_train[all_features_cols]
-  x_test <- data_test[all_features_cols]
-  
-  y_train <- as.factor(data_train[, target_col])
-  levels(y_train) <- c("X0", "X1")
-  y_test <- as.factor(data_test[,target_col])
-  levels(y_test) <- c("X0", "X1")
-  
-  # fit model
-  mtryGrid <- expand.grid(mtry = 6)
-  model <- train(
-    x = x_train, 
-    y = y_train,
-    preProcess = c("YeoJohnson", "center", "scale"),
-    method = "rf",
-    metric="ROC",   
-    maximize = TRUE,
-    trControl = trainControl(
-      method="none",
-      number = 5,
-      verboseIter = TRUE,
-      classProbs=TRUE,
-      summaryFunction = twoClassSummary),
-    ntree = 50,
-    nodesize = 20,
-    sampsize = c(X0 = floor(length(tr_pos) * 5), X1 = length(tr_pos)),
-    tuneGrid = mtryGrid
-  )
-
-  train_pred <- predict(model, newdata = x_train, type = "prob")
-  test_pred <- predict(model, newdata = x_test, type = "prob")
-  
-  tr_auc <- auc(y_train, train_pred[, 2]) 
-  te_auc <- auc(y_test, test_pred[, 2]) 
-
-  return(list(as.numeric(tr_auc), as.numeric(te_auc)))
-} 
-
-all_tr_auc <- unlist(lapply(res_models, function(x) x[[1]]))
-all_te_auc <- unlist(lapply(res_models, function(x) x[[2]]))
-
-roc_auc_data <- data.frame(train_auc = all_tr_auc, test_auc = all_te_auc)
-roc_auc_data_m <- melt(roc_auc_data)
-
-ggplot(roc_auc_data_m, aes(value, fill=variable)) + 
-  geom_density(alpha = 0.5)
-
-ggplot(roc_auc_data, aes(x=train_auc, y=test_auc)) + 
-  geom_point()
-
-
-
-
-
-####################################### MODEL SELECTION FOR RANDOM FOREST
+####################################### MODEL SELECTION FOR RANDOM FOREST WITHOUT LIMITING OUTLIERS
 agg_level <- "_99._"
 init_ratio <- 0.5
 train_ratio <- 0.7
@@ -221,7 +115,6 @@ for (target_column in all_target_cols){
     
     set.seed(i)
     tr_pos <- sample(x = rownames(pos_data_train), size = floor(train_ratio * nrow(pos_data_train)), replace = FALSE)
-    
     te_pos <- setdiff(rownames(pos_data_train), tr_pos)
     data_train <- rbind(data_train, pos_data_train[tr_pos, ])
     data_test <- rbind(data_test, pos_data_train[te_pos, ])
@@ -236,7 +129,243 @@ for (target_column in all_target_cols){
     
     
     # limit outliers
-    data_tr <- limit_outliers(x_train = x_train, x_test = x_test, 
+    # data_tr <- limit_outliers(x_train = x_train, x_test = x_test, 
+    #                           features = all_features_cols, iqr_multiplicator = 3)
+    # x_train <- data_tr[['train']]
+    # x_test <- data_tr[['test']]
+    
+    # fit models
+    trCtrl <- trainControl(
+      method="none",
+      verboseIter = TRUE,
+      classProbs=TRUE,
+      summaryFunction = twoClassSummary,
+      seeds = seq(1, nrow(par_df)))
+    # set "seeds" parameters to make results reproducible
+    
+    res_iter <- foreach(j=seq(1, nrow(par_df)), .combine = rbind) %dopar% {
+      
+      mtry <- par_df[j, ]$mtry
+      ntree <- par_df[j, ]$ntree
+      nodesize <- par_df[j, ]$nodesize
+      maxnodes <- par_df[j, ]$maxnodes
+      
+      mtryGrid <- expand.grid(mtry = mtry)
+      model <- train(
+        x = x_train, 
+        y = y_train,
+        preProcess = c("YeoJohnson", "center", "scale"),
+        method = "rf",
+        metric="ROC",   
+        maximize = TRUE,
+        trControl = trCtrl,
+        ntree = ntree,
+        nodesize = nodesize,
+        maxnodes = maxnodes,
+        sampsize = c(X0 = floor(length(tr_pos) * 5), X1 = length(tr_pos)),
+        tuneGrid = mtryGrid
+      )
+      
+      train_pred <- predict(model, newdata = x_train, type = "prob")
+      test_pred <- predict(model, newdata = x_test, type = "prob")
+      
+      tr_auc <- auc(response = y_train, predictor = train_pred[, 2], levels=c("X0", "X1"),  direction = "<") 
+      te_auc <- auc(response = y_test, predictor = test_pred[, 2], levels=c("X0", "X1"),  direction = "<") 
+
+      out_df <- data.frame(
+        mtry = mtry, ntree = ntree, nodesize = nodesize, maxnodes = maxnodes,
+        tr_auc = tr_auc, te_auc = te_auc, iter = j)
+      
+      return(out_df)
+    }
+    
+    res_iter$iter <- i
+    res_iter$cancer_type <- cancer_type
+    all_results <- rbind(all_results, res_iter)
+    
+  }
+  
+}
+
+all_results$diff_auc <- all_results$tr_auc - all_results$te_auc
+write.csv(all_results, file = "data/output/hp_rf.csv")
+
+
+## analysis of results
+all_results <- read.csv("data/output/hp_rf.csv")
+res_all <- all_results %>%
+  group_by(cancer_type) %>%
+  summarize(
+    min_te_auc = min(te_auc),
+    q10 = quantile(te_auc, 0.1),
+    q20 = quantile(te_auc, 0.2),
+    q30 = quantile(te_auc, 0.3),
+    sd = sd(te_auc)
+  ) %>%
+  arrange(cancer_type)
+
+good_cancers_nm <- c("breast", "prostate")
+
+pred_cancers_data <- all_results %>%
+  filter(cancer_type %in% good_cancers_nm)
+
+ggplot(pred_cancers_data, aes(te_auc)) +
+  geom_density(alpha = 0.5) +
+  facet_wrap(~ cancer_type)
+
+ggplot(all_results, aes(te_auc)) +
+  geom_density(alpha = 0.5) +
+  facet_wrap(~ cancer_type)
+
+all_results %>%
+  filter(cancer_type %in% good_cancers_nm) %>%
+  group_by(ntree) %>%
+  summarize(
+    min_te_auc = min(te_auc),
+    q10 = quantile(te_auc, 0.1),
+    q30 = quantile(te_auc, 0.3),
+    q70 = quantile(te_auc, 0.7),
+    max_te = max(te_auc)
+  ) %>%
+  arrange(min_te_auc)
+
+gb_pars <- pred_cancers_data %>%
+  group_by(ntree, nodesize, maxnodes, mtry, cancer_type) %>%
+  summarize(
+    mean_d = mean(diff_auc),
+    med = median(diff_auc),
+    sd = sd(te_auc)
+  ) %>%
+  group_by(cancer_type) %>%
+  mutate(
+    mean_rank = dense_rank(mean_d),
+    med_rank = dense_rank(med),
+    sd_rank = ntile(sd, 5)
+  )
+
+gb_pars <- gb_pars %>%
+  group_by(ntree, nodesize, maxnodes, mtry) %>%
+  summarize(
+    mean_rank = mean(mean_rank),
+    med_rank = mean(med_rank),
+    sd_rank = mean(sd_rank)
+  ) %>%
+  mutate(summed_rank = mean_rank + med_rank + sd_rank)
+
+gb_pars %>%
+  ungroup() %>%
+  filter(summed_rank == min(summed_rank))
+
+
+opt_pars <- all_results %>%
+  filter(
+    nodesize == 50,
+    ntree == 500,
+    maxnodes == 3,
+    mtry == 6
+  )
+
+res_opt <- opt_pars %>%
+  group_by(cancer_type) %>%
+  summarize(
+    min_te_auc = min(te_auc),
+    q10 = quantile(te_auc, 0.1),
+    q20 = quantile(te_auc, 0.2),
+    med_te_auc = median(te_auc),
+    mean_te_auc = mean(te_auc),
+    q80 = quantile(te_auc, 0.8),
+    q90 = quantile(te_auc, 0.9),
+    max_te_auc = max(te_auc),
+    sd = sd(te_auc)
+  ) %>%
+  arrange(cancer_type)
+
+ggplot(opt_pars, aes(te_auc)) +
+  geom_density(alpha = 0.5) +
+  facet_wrap(~ cancer_type)
+
+
+####################################### MODEL SELECTION FOR RANDOM FOREST WITH LIMITING OUTLIERS
+agg_level <- "_99._"
+init_ratio <- 0.5
+train_ratio <- 0.7
+
+chrs <-
+  c(
+    "1","2","3","4","5","6","7","8","9","10",
+    "11","12","13","14","15","16","17","18","19","20","21","22","X"
+  )
+data$chr <- as.character(data$chr)
+all_pos_map <- data.frame()
+for (chr in chrs){
+  starts <- data[data$chr == chr, 'from']
+  starts <- starts[order(starts)]
+  bin_name <- cut(starts, breaks = 4, labels = c("first_bin","second_bin","third_bin","last_bin"),
+                  include.lowest = TRUE, right = FALSE)
+  pos_map <- data.frame(from = starts, pos_bin = bin_name, chr = chr)
+  all_pos_map <- rbind(all_pos_map, pos_map)
+}
+all_pos_map$chr <- as.character(all_pos_map$chr)
+data <- data %>%
+  inner_join(all_pos_map, by=c("chr","from"))
+
+data$strata <- paste0(data$chr, "_", data$pos_bin)
+
+all_target_cols <- grep(x =  hsp_cols, pattern = agg_level, value = TRUE)
+
+data$sum_targets <- rowSums(data[, all_target_cols])
+all_neg_label <- data[data$sum_targets == 0, ]
+
+set.seed(7)
+tr_neg <- createDataPartition(all_neg_label$strata, p = init_ratio, list = FALSE)
+neg_data_train <- all_neg_label[tr_neg, ]
+
+all_results <- data.frame()
+
+for (target_column in all_target_cols){
+  
+  cancer_pos_label_data <- data[data[target_column] == 1, ]
+  set.seed(7)
+  tr_pos <- sample(rownames(cancer_pos_label_data), size = floor(init_ratio * nrow(cancer_pos_label_data)), 
+                   replace = FALSE)
+  pos_data_train <- cancer_pos_label_data[tr_pos, ]
+  
+  cancer_type <- strsplit(target_column, "_")[[1]][3]
+  all_features_cols <- c(conserved_features, grep(x =  tissue_spec_feats, pattern = cancer_type, value = TRUE))
+  
+  par_df <- expand.grid(mtry = c(3, 4, 5, 6), 
+                        ntree = c(500, 1000), 
+                        nodesize = c(30, 50, 70),
+                        maxnodes = c(3, 5, 8, 10, 12)
+  )
+  # split on train/test
+  n_repeats <- 30
+  
+  for (i in seq(1, n_repeats)){
+    
+    set.seed(i)
+    tr_neg <- createDataPartition(neg_data_train$strata, p = train_ratio, list = FALSE)
+    
+    data_train <- neg_data_train[tr_neg,]
+    data_test  <- neg_data_train[-tr_neg,]
+    
+    set.seed(i)
+    tr_pos <- sample(x = rownames(pos_data_train), size = floor(train_ratio * nrow(pos_data_train)), replace = FALSE)
+    te_pos <- setdiff(rownames(pos_data_train), tr_pos)
+    data_train <- rbind(data_train, pos_data_train[tr_pos, ])
+    data_test <- rbind(data_test, pos_data_train[te_pos, ])
+    
+    x_train <- data_train[all_features_cols]
+    x_test <- data_test[all_features_cols]
+    
+    y_train <- as.factor(data_train[, target_column])
+    levels(y_train) <- c("X0", "X1")
+    y_test <- as.factor(data_test[, target_column])
+    levels(y_test) <- c("X0", "X1")
+    
+    
+    # limit outliers
+    data_tr <- limit_outliers(x_train = x_train, x_test = x_test,
                               features = all_features_cols, iqr_multiplicator = 3)
     x_train <- data_tr[['train']]
     x_test <- data_tr[['test']]
@@ -276,8 +405,8 @@ for (target_column in all_target_cols){
       train_pred <- predict(model, newdata = x_train, type = "prob")
       test_pred <- predict(model, newdata = x_test, type = "prob")
       
-      tr_auc <- auc(y_train, train_pred[, 2]) 
-      te_auc <- auc(y_test, test_pred[, 2]) 
+      tr_auc <- auc(response = y_train, predictor = train_pred[, 2], levels=c("X0", "X1"),  direction = "<") 
+      te_auc <- auc(response = y_test, predictor = test_pred[, 2], levels=c("X0", "X1"),  direction = "<") 
       
       out_df <- data.frame(
         mtry = mtry, ntree = ntree, nodesize = nodesize, maxnodes = maxnodes,
@@ -297,6 +426,8 @@ for (target_column in all_target_cols){
 all_results$diff_auc <- all_results$tr_auc - all_results$te_auc
 write.csv(all_results, file = "data/output/hp_rf_lo.csv")
 
+
+## analysis of results
 all_results <- read.csv("data/output/hp_rf_lo.csv")
 res_all <- all_results %>%
   group_by(cancer_type) %>%
@@ -312,14 +443,14 @@ res_all <- all_results %>%
 good_cancers_nm <- c("breast", "prostate")
 
 pred_cancers_data <- all_results %>%
-  filter(cancer_type %in% good_cancers_nm) 
+  filter(cancer_type %in% good_cancers_nm)
 
-ggplot(pred_cancers_data, aes(te_auc)) + 
-  geom_density(alpha = 0.5) + 
+ggplot(pred_cancers_data, aes(te_auc)) +
+  geom_density(alpha = 0.5) +
   facet_wrap(~ cancer_type)
 
-ggplot(all_results, aes(te_auc)) + 
-  geom_density(alpha = 0.5) + 
+ggplot(all_results, aes(te_auc)) +
+  geom_density(alpha = 0.5) +
   facet_wrap(~ cancer_type)
 
 all_results %>%
@@ -334,7 +465,7 @@ all_results %>%
   ) %>%
   arrange(min_te_auc)
 
-gb_pars <- pred_cancers_data %>% 
+gb_pars <- pred_cancers_data %>%
   group_by(ntree, nodesize, maxnodes, mtry, cancer_type) %>%
   summarize(
     mean_d = mean(diff_auc),
@@ -346,7 +477,7 @@ gb_pars <- pred_cancers_data %>%
     mean_rank = dense_rank(mean_d),
     med_rank = dense_rank(med),
     sd_rank = ntile(sd, 5)
-  ) 
+  )
 
 gb_pars <- gb_pars %>%
   group_by(ntree, nodesize, maxnodes, mtry) %>%
@@ -385,15 +516,43 @@ res_opt <- opt_pars %>%
   ) %>%
   arrange(cancer_type)
 
-ggplot(opt_pars, aes(te_auc)) + 
-  geom_density(alpha = 0.5) + 
+ggplot(opt_pars, aes(te_auc)) +
+  geom_density(alpha = 0.5) +
   facet_wrap(~ cancer_type)
+
+## select limit outlies as obligatiry preprocessing step
+
+
 
 
 
 ######## REMOVE CORRELATED FEATURES WITH PLS AND AGAIN TUNE RANDOM FOREST
 
 # https://www.kaggle.com/sasali/notebook83cb3b1069#PLS---RF(customized-caret-train-function)
+
+# load data
+data <- read.csv(
+  paste0("data/datasets/dataset_", format(win_len, scientific = FALSE), ".csv")
+)
+
+hsp_cols <- grep(x = names(data), pattern = "hsp",value = TRUE)
+
+conserved_features <- c(
+  "A_Phased_Repeat", "Direct_Repeat", 
+  "Inverted_Repeat", "Mirror_Repeat", "Short_Tandem_Repeat", 
+  "Z_DNA_Motif", "G_quadruplex", 
+  "stemloops_16_50", "stemloops_6_15", 
+  "X3UTR", "X5UTR", "codingExons", "downstream", "introns", "promoters", "WholeGenes", 
+  "tad_boundaries_liver", "tad_boundaries_ovary", "tad_boundaries_pancreatic",
+  
+  "cancer_liver_ATF3.human", "cancer_liver_CTCF.human", "cancer_liver_EGR1.human",
+  "cancer_liver_FOXA1.human", "cancer_liver_FOXA2.human", "cancer_liver_GABPA.human",
+  "cancer_liver_HNF4A.human", "cancer_liver_HNF4G.human", "cancer_liver_JUND.human",
+  "cancer_liver_MAX.human", "cancer_liver_NR2F2.human", "cancer_liver_REST.human",
+  "cancer_liver_RXRA.human", "cancer_liver_SP1.human", "cancer_liver_YY1.human",
+  "cancer_liver_ZBTB33.human"
+)
+tissue_spec_feats <- setdiff(names(data), c("chr","from","to", hsp_cols, conserved_features))
 
 PlsRf <- list(label = "PLS-RF", type = "Classification",
               library = c("pls", "randomForest"),
@@ -542,7 +701,7 @@ for (target_column in all_target_cols){
         nodesize = nodesize,
         maxnodes = maxnodes,
         ncomp = ncomp
-        )
+      )
       
       model <- train(
         x = x_train, 
@@ -559,8 +718,8 @@ for (target_column in all_target_cols){
       train_pred <- predict(model, newdata = x_train, type = "prob")
       test_pred <- predict(model, newdata = x_test, type = "prob")
       
-      tr_auc <- auc(y_train, train_pred[, 2]) 
-      te_auc <- auc(y_test, test_pred[, 2]) 
+      tr_auc <- auc(response = y_train, predictor = train_pred[, 2], levels=c("X0", "X1"),  direction = "<") 
+      te_auc <- auc(response = y_test, predictor = test_pred[, 2], levels=c("X0", "X1"),  direction = "<")
       
       out_df <- data.frame(
         mtry = mtry, ntree = ntree, nodesize = nodesize, maxnodes = maxnodes, 
@@ -581,6 +740,7 @@ all_results$diff_auc <- all_results$tr_auc - all_results$te_auc
 write.csv(all_results, file = "data/output/hp_rf_pls_lo.csv")
 
 
+## analysis of results
 all_results <- read.csv("data/output/hp_rf_pls_lo.csv")
 res_all <- all_results %>%
   group_by(cancer_type) %>%
@@ -593,19 +753,18 @@ res_all <- all_results %>%
   ) %>%
   arrange(cancer_type)
 
-pred_cancers_data <- all_results %>%
-  filter(cancer_type %in% c("breast", "ovary", "prostate", "brain")) 
+# make decision on alll cancer types
+pred_cancers_data <- all_results
 
-ggplot(pred_cancers_data, aes(te_auc)) + 
-  geom_density(alpha = 0.5) + 
+ggplot(pred_cancers_data, aes(te_auc)) +
+  geom_density(alpha = 0.5) +
   facet_wrap(~ cancer_type)
 
-ggplot(all_results, aes(te_auc)) + 
-  geom_density(alpha = 0.5) + 
+ggplot(all_results, aes(te_auc)) +
+  geom_density(alpha = 0.5) +
   facet_wrap(~ cancer_type)
 
 all_results %>%
-  filter(cancer_type %in% c('brain', 'breast', 'ovary','prostate')) %>%
   group_by(ntree) %>%
   summarize(
     min_te_auc = min(te_auc),
@@ -616,7 +775,7 @@ all_results %>%
   ) %>%
   arrange(min_te_auc)
 
-gb_pars <- pred_cancers_data %>% 
+gb_pars <- pred_cancers_data %>%
   group_by(ntree, nodesize, maxnodes, mtry, ncomp, cancer_type) %>%
   summarize(
     mean_d = mean(diff_auc),
@@ -628,7 +787,7 @@ gb_pars <- pred_cancers_data %>%
     mean_rank = dense_rank(mean_d),
     med_rank = dense_rank(med),
     sd_rank = ntile(sd, 5)
-  ) 
+  )
 gb_pars <- gb_pars %>%
   group_by(ntree, nodesize, maxnodes, mtry, ncomp) %>%
   summarize(
@@ -666,13 +825,40 @@ res_opt <- opt_pars %>%
   ) %>%
   arrange(cancer_type)
 
-ggplot(opt_pars, aes(te_auc)) + 
-  geom_density(alpha = 0.5) + 
+ggplot(opt_pars, aes(te_auc)) +
+  geom_density(alpha = 0.5) +
   facet_wrap(~ cancer_type)
 
 
 
+
+
+
 ######## REMOVE CORRELATED FEATURES WITH PCA AND AGAIN TUNE RANDOM FOREST
+
+# load data
+data <- read.csv(
+  paste0("data/datasets/dataset_", format(win_len, scientific = FALSE), ".csv")
+)
+
+hsp_cols <- grep(x = names(data), pattern = "hsp",value = TRUE)
+
+conserved_features <- c(
+  "A_Phased_Repeat", "Direct_Repeat", 
+  "Inverted_Repeat", "Mirror_Repeat", "Short_Tandem_Repeat", 
+  "Z_DNA_Motif", "G_quadruplex", 
+  "stemloops_16_50", "stemloops_6_15", 
+  "X3UTR", "X5UTR", "codingExons", "downstream", "introns", "promoters", "WholeGenes", 
+  "tad_boundaries_liver", "tad_boundaries_ovary", "tad_boundaries_pancreatic",
+  
+  "cancer_liver_ATF3.human", "cancer_liver_CTCF.human", "cancer_liver_EGR1.human",
+  "cancer_liver_FOXA1.human", "cancer_liver_FOXA2.human", "cancer_liver_GABPA.human",
+  "cancer_liver_HNF4A.human", "cancer_liver_HNF4G.human", "cancer_liver_JUND.human",
+  "cancer_liver_MAX.human", "cancer_liver_NR2F2.human", "cancer_liver_REST.human",
+  "cancer_liver_RXRA.human", "cancer_liver_SP1.human", "cancer_liver_YY1.human",
+  "cancer_liver_ZBTB33.human"
+)
+tissue_spec_feats <- setdiff(names(data), c("chr","from","to", hsp_cols, conserved_features))
 
 agg_level <- "_99._"
 init_ratio <- 0.5
@@ -720,7 +906,7 @@ for (target_column in all_target_cols){
   
   cancer_type <- strsplit(target_column, "_")[[1]][3]
   all_features_cols <- c(conserved_features, grep(x =  tissue_spec_feats, pattern = cancer_type, value = TRUE))
-
+  
   par_df <- expand.grid(mtry = c(2, 3, 4), 
                         ntree = c(500, 1000), 
                         nodesize = c(50, 70),
@@ -782,7 +968,7 @@ for (target_column in all_target_cols){
           summaryFunction = twoClassSummary,
           preProcOptions = list(pcaComp = pcaComp),
           seeds = seq(1, nrow(par_df))
-          ),
+        ),
         ntree = ntree,
         nodesize = nodesize,
         maxnodes = maxnodes,
@@ -793,8 +979,8 @@ for (target_column in all_target_cols){
       train_pred <- predict(model, newdata = x_train, type = "prob")
       test_pred <- predict(model, newdata = x_test, type = "prob")
       
-      tr_auc <- auc(y_train, train_pred[, 2]) 
-      te_auc <- auc(y_test, test_pred[, 2]) 
+      tr_auc <- auc(response = y_train, predictor = train_pred[, 2], levels=c("X0", "X1"),  direction = "<") 
+      te_auc <- auc(response = y_test, predictor = test_pred[, 2], levels=c("X0", "X1"),  direction = "<")
       
       out_df <- data.frame(
         mtry = mtry, ntree = ntree, nodesize = nodesize, maxnodes = maxnodes, pcaComp = pcaComp,
@@ -813,6 +999,9 @@ for (target_column in all_target_cols){
 all_results$diff_auc <- all_results$tr_auc - all_results$te_auc
 write.csv(all_results, file = "data/output/hp_rf_pca_lo.csv")
 
+
+## analysis of results
+
 all_results <- read.csv("data/output/hp_rf_pca_lo.csv")
 res_all <- all_results %>%
   group_by(cancer_type) %>%
@@ -825,19 +1014,20 @@ res_all <- all_results %>%
   ) %>%
   arrange(cancer_type)
 
+good_cancers_nm <- c("prostate", "brain")
 pred_cancers_data <- all_results %>%
-  filter(cancer_type %in% c("breast", "ovary", "prostate", "brain")) 
+  filter(cancer_type %in% good_cancers_nm)
 
-ggplot(pred_cancers_data, aes(te_auc)) + 
-  geom_density(alpha = 0.5) + 
+ggplot(pred_cancers_data, aes(te_auc)) +
+  geom_density(alpha = 0.5) +
   facet_wrap(~ cancer_type)
 
-ggplot(all_results, aes(te_auc)) + 
-  geom_density(alpha = 0.5) + 
+ggplot(all_results, aes(te_auc)) +
+  geom_density(alpha = 0.5) +
   facet_wrap(~ cancer_type)
 
 all_results %>%
-  filter(cancer_type %in% c('brain', 'breast', 'ovary','prostate')) %>%
+  filter(cancer_type %in% good_cancers_nm) %>%
   group_by(ntree) %>%
   summarize(
     min_te_auc = min(te_auc),
@@ -848,7 +1038,7 @@ all_results %>%
   ) %>%
   arrange(min_te_auc)
 
-gb_pars <- pred_cancers_data %>% 
+gb_pars <- pred_cancers_data %>%
   group_by(ntree, nodesize, maxnodes, mtry, pcaComp, cancer_type) %>%
   summarize(
     mean_d = mean(diff_auc),
@@ -860,7 +1050,7 @@ gb_pars <- pred_cancers_data %>%
     mean_rank = dense_rank(mean_d),
     med_rank = dense_rank(med),
     sd_rank = ntile(sd, 5)
-  ) 
+  )
 gb_pars <- gb_pars %>%
   group_by(ntree, nodesize, maxnodes, mtry, pcaComp) %>%
   summarize(
@@ -876,10 +1066,10 @@ gb_pars %>%
 
 opt_pars <- all_results %>%
   filter(
-    nodesize == 50,
-    ntree == 1000,
+    nodesize == 70,
+    ntree == 500,
     maxnodes == 8,
-    mtry == 3,
+    mtry == 4,
     pcaComp == 5
   )
 
@@ -898,15 +1088,42 @@ res_opt <- opt_pars %>%
   ) %>%
   arrange(cancer_type)
 
-ggplot(opt_pars, aes(te_auc)) + 
-  geom_density(alpha = 0.5) + 
+ggplot(opt_pars, aes(te_auc)) +
+  geom_density(alpha = 0.5) +
   facet_wrap(~ cancer_type)
 
 
 
-########################### ADABOOST
+
+########################### ADABOOST LO
 
 # discrete adaboost with classification trees, exponential loss 
+
+# load data
+data <- read.csv(
+  paste0("data/datasets/dataset_", format(win_len, scientific = FALSE), ".csv")
+)
+
+hsp_cols <- grep(x = names(data), pattern = "hsp",value = TRUE)
+
+conserved_features <- c(
+  "A_Phased_Repeat", "Direct_Repeat", 
+  "Inverted_Repeat", "Mirror_Repeat", "Short_Tandem_Repeat", 
+  "Z_DNA_Motif", "G_quadruplex", 
+  "stemloops_16_50", "stemloops_6_15", 
+  "X3UTR", "X5UTR", "codingExons", "downstream", "introns", "promoters", "WholeGenes", 
+  "tad_boundaries_liver", "tad_boundaries_ovary", "tad_boundaries_pancreatic",
+  
+  "cancer_liver_ATF3.human", "cancer_liver_CTCF.human", "cancer_liver_EGR1.human",
+  "cancer_liver_FOXA1.human", "cancer_liver_FOXA2.human", "cancer_liver_GABPA.human",
+  "cancer_liver_HNF4A.human", "cancer_liver_HNF4G.human", "cancer_liver_JUND.human",
+  "cancer_liver_MAX.human", "cancer_liver_NR2F2.human", "cancer_liver_REST.human",
+  "cancer_liver_RXRA.human", "cancer_liver_SP1.human", "cancer_liver_YY1.human",
+  "cancer_liver_ZBTB33.human"
+)
+tissue_spec_feats <- setdiff(names(data), c("chr","from","to", hsp_cols, conserved_features))
+
+
 
 agg_level <- "_99._"
 init_ratio <- 0.5
@@ -943,13 +1160,6 @@ tr_neg <- createDataPartition(all_neg_label$strata, p = init_ratio, list = FALSE
 neg_data_train <- all_neg_label[tr_neg, ]
 
 all_results <- data.frame()
-all_target_cols <- all_target_cols[!(all_target_cols %in% c("hsp_99._brain", 
-                                                            "hsp_99._blood",
-                                                            "hsp_99._bone",
-                                                            "hsp_99._breast",
-                                                            "hsp_99._liver",
-                                                            "hsp_99._ovary",
-                                                            "hsp_99._pancreatic"))]
 
 for (target_column in all_target_cols){
   
@@ -971,7 +1181,7 @@ for (target_column in all_target_cols){
   # split on train/test
   n_repeats <- 30
 
-  for (i in seq(22, n_repeats)){
+  for (i in seq(1, n_repeats)){
     
     set.seed(i)
     tr_neg <- createDataPartition(neg_data_train$strata, p = train_ratio, list = FALSE)
@@ -1027,8 +1237,8 @@ for (target_column in all_target_cols){
       train_pred <- predict(model, newdata = x_train, type = "prob")
       test_pred <- predict(model, newdata = x_test, type = "prob")
       
-      tr_auc <- auc(y_train, train_pred[, 2]) 
-      te_auc <- auc(y_test, test_pred[, 2]) 
+      tr_auc <- auc(response = y_train, predictor = train_pred[, 2], levels=c("X0", "X1"),  direction = "<") 
+      te_auc <- auc(response = y_test, predictor = test_pred[, 2], levels=c("X0", "X1"),  direction = "<")
       
       out_df <- data.frame(
         ntrees = iter, maxdepth = maxdepth, nu = nu, tr_auc = tr_auc, te_auc = te_auc, iter = j)
@@ -1042,9 +1252,11 @@ for (target_column in all_target_cols){
   }
   
 }
-
+all_results$diff_auc  <- NULL
 all_results$diff_auc <- all_results$tr_auc - all_results$te_auc
-write.csv(all_results, file = "data/output/hp_ada_lo_rest_new_1.csv")
+write.csv(all_results, file = "data/output/hp_ada_lo.csv")
+
+## analysis of results
 
 all_results <- read.csv("data/output/hp_ada_lo.csv")
 res_all <- all_results %>%
@@ -1058,28 +1270,12 @@ res_all <- all_results %>%
   ) %>%
   arrange(cancer_type)
 
-pred_cancers_data <- all_results %>%
-  filter(cancer_type %in% c("breast", "ovary", "prostate", "brain")) 
-
-ggplot(pred_cancers_data, aes(te_auc)) + 
-  geom_density(alpha = 0.5) + 
-  facet_wrap(~ cancer_type)
+pred_cancers_data <- all_results
 
 ggplot(all_results, aes(te_auc)) + 
   geom_density(alpha = 0.5) + 
   facet_wrap(~ cancer_type)
 
-all_results %>%
-  filter(cancer_type %in% c('brain', 'breast', 'ovary','prostate')) %>%
-  group_by(ntrees) %>%
-  summarize(
-    min_te_auc = min(te_auc),
-    q10 = quantile(te_auc, 0.1),
-    q30 = quantile(te_auc, 0.3),
-    q70 = quantile(te_auc, 0.7),
-    max_te = max(te_auc)
-  ) %>%
-  arrange(min_te_auc)
 
 gb_pars <- pred_cancers_data %>% 
   group_by(ntrees, nu, maxdepth, cancer_type) %>%
@@ -1111,7 +1307,7 @@ gb_pars %>%
 opt_pars <- all_results %>%
   filter(
     nu == 0.1,
-    ntrees == 50,
+    ntrees == 100,
     maxdepth == 2
   )
 
@@ -1133,6 +1329,5 @@ res_opt <- opt_pars %>%
 ggplot(opt_pars, aes(te_auc)) + 
   geom_density(alpha = 0.5) + 
   facet_wrap(~ cancer_type)
-
 
 

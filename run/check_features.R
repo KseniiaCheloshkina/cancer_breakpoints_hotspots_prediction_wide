@@ -223,7 +223,7 @@ for (target_column in all_target_cols){
       
       features_gr <- names(feat_groups)[j]
       features_nm <- feat_groups[[features_gr]]
-      features_nm
+      
       # fit models
       model <- train(
         x = x_train[features_nm], 

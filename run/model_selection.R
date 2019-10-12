@@ -188,11 +188,11 @@ for (target_column in all_target_cols){
 }
 
 all_results$diff_auc <- all_results$tr_auc - all_results$te_auc
-write.csv(all_results, file = "data/output/hp_rf.csv")
+write.csv(all_results, file = "data/output/model_selection/hp_rf.csv")
 
 
 ## analysis of results
-all_results <- read.csv("data/output/hp_rf.csv")
+all_results <- read.csv("data/output/model_selection/hp_rf.csv")
 res_all <- all_results %>%
   group_by(cancer_type) %>%
   summarize(
@@ -424,11 +424,11 @@ for (target_column in all_target_cols){
 }
 
 all_results$diff_auc <- all_results$tr_auc - all_results$te_auc
-write.csv(all_results, file = "data/output/hp_rf_lo.csv")
+write.csv(all_results, file = "data/output/model_selection/hp_rf_lo.csv")
 
 
 ## analysis of results
-all_results <- read.csv("data/output/hp_rf_lo.csv")
+all_results <- read.csv("data/output/model_selection/hp_rf_lo.csv")
 res_all <- all_results %>%
   group_by(cancer_type) %>%
   summarize(
@@ -737,11 +737,11 @@ for (target_column in all_target_cols){
 }
 
 all_results$diff_auc <- all_results$tr_auc - all_results$te_auc
-write.csv(all_results, file = "data/output/hp_rf_pls_lo.csv")
+write.csv(all_results, file = "data/output/model_selection/hp_rf_pls_lo.csv")
 
 
 ## analysis of results
-all_results <- read.csv("data/output/hp_rf_pls_lo.csv")
+all_results <- read.csv("data/output/model_selection/hp_rf_pls_lo.csv")
 res_all <- all_results %>%
   group_by(cancer_type) %>%
   summarize(
@@ -997,12 +997,12 @@ for (target_column in all_target_cols){
   
 }
 all_results$diff_auc <- all_results$tr_auc - all_results$te_auc
-write.csv(all_results, file = "data/output/hp_rf_pca_lo.csv")
+write.csv(all_results, file = "data/output/model_selection/hp_rf_pca_lo.csv")
 
 
 ## analysis of results
 
-all_results <- read.csv("data/output/hp_rf_pca_lo.csv")
+all_results <- read.csv("data/output/model_selection/hp_rf_pca_lo.csv")
 res_all <- all_results %>%
   group_by(cancer_type) %>%
   summarize(
@@ -1254,11 +1254,11 @@ for (target_column in all_target_cols){
 }
 all_results$diff_auc  <- NULL
 all_results$diff_auc <- all_results$tr_auc - all_results$te_auc
-write.csv(all_results, file = "data/output/hp_ada_lo.csv")
+write.csv(all_results, file = "data/output/model_selection/hp_ada_lo.csv")
 
 ## analysis of results
 
-all_results <- read.csv("data/output/hp_ada_lo.csv")
+all_results <- read.csv("data/output/model_selection/hp_ada_lo.csv")
 res_all <- all_results %>%
   group_by(cancer_type) %>%
   summarize(

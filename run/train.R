@@ -15,13 +15,13 @@ library(pROC)
 source("run/features.R")
 source("run/tools.R")
 
-n_cores <- 3
+n_cores <- 1
 registerDoParallel(n_cores)
 
 set.seed(7)
 
 
-win_len <- 100000
+win_len <- 10000
 win_len_upper <- win_len * 10
 
 # load data
@@ -58,6 +58,7 @@ all_data <- get_higher_level_features(data=data, features_cols = features_cols,
                                            win_len_upper = win_len_upper,
                                            path_to_upper_data = paste0(data_path, "dataset_",
                                                                        format(win_len_upper, scientific = FALSE), ".csv"))
+
 high_features <- setdiff(names(all_data), c(features_cols, ss_cols, hsp_cols))
 features_cols <- c(features_cols, high_features)
 
@@ -137,13 +138,14 @@ tf <- c("cancer_liver_ATF3.human", "cancer_liver_CTCF.human", "cancer_pancreas_C
         "cancer_liver_GABPA.human","cancer_liver_HNF4A.human", "cancer_liver_HNF4G.human",
         "cancer_liver_JUND.human","cancer_liver_MAX.human", "cancer_liver_NR2F2.human",
         "cancer_liver_REST.human", "cancer_liver_RXRA.human", "cancer_liver_SP1.human",
-        "cancer_liver_YY1.human", "cancer_liver_ZBTB33.human"  )
+        "cancer_liver_YY1.human", "cancer_liver_ZBTB33.human")
 all_tf <- vector()
 for (feat in features_cols){
   for (col in tf){
     all_tf <- c(all_tf, grep(x = feat, pattern = col, value = TRUE))  
   }
 }
+
 wo_tf_feats <- setdiff(features_cols, all_tf)
 wo_tad_feats <- setdiff(features_cols, all_tad)
 wo_reg_feats <- setdiff(features_cols, all_reg)
@@ -151,6 +153,28 @@ wo_sec_str_feats <- setdiff(features_cols, all_sec_str)
 wo_histones <- setdiff(features_cols, all_histones)
 wo_methyl <- setdiff(features_cols, all_methyl)
 wo_chromatin <- setdiff(features_cols, all_chromatin)
+
+
+
+# exclude targets with small number of positive examples
+excluded_levels <- list()
+excluded_levels[['100000']] <- c(
+  "hsp_99.95._blood", "hsp_99.95._bone", "hsp_99.95._brain", "hsp_99.95._breast", "hsp_99.95._liver",
+  "hsp_99.95._ovary", "hsp_99.95._pancreatic", "hsp_99.95._prostate", "hsp_99.95._skin",  "hsp_99.95._uterus",
+  "hsp_99.99._blood", "hsp_99.99._bone", "hsp_99.99._brain", "hsp_99.99._breast", "hsp_99.99._liver",
+  "hsp_99.99._ovary", "hsp_99.99._pancreatic", "hsp_99.99._prostate", "hsp_99.99._skin", "hsp_99.99._uterus")
+excluded_levels[['1000000']] <- c(
+  "hsp_99.9._blood", "hsp_99.9._bone", "hsp_99.9._brain", "hsp_99.9._breast", "hsp_99.9._liver",
+  "hsp_99.9._ovary", "hsp_99.9._pancreatic", "hsp_99.9._prostate", "hsp_99.9._skin", "hsp_99.9._uterus", 
+  "hsp_99.95._blood", "hsp_99.95._bone", "hsp_99.95._brain", "hsp_99.95._breast", "hsp_99.95._liver",
+  "hsp_99.95._ovary", "hsp_99.95._pancreatic", "hsp_99.95._prostate", "hsp_99.95._skin",  "hsp_99.95._uterus",
+  "hsp_99.99._blood", "hsp_99.99._bone", "hsp_99.99._brain", "hsp_99.99._breast", "hsp_99.99._liver",
+  "hsp_99.99._ovary", "hsp_99.99._pancreatic", "hsp_99.99._prostate", "hsp_99.99._skin", "hsp_99.99._uterus")
+
+excl_lev_current <- excluded_levels[[as.character(format(win_len, scientific = F))]]
+if (!is.null(excl_lev_current)){
+  hsp_cols <- setdiff(hsp_cols, excl_lev_current)
+}
 
 # train/test split
 train_ratio <- 0.7
@@ -201,7 +225,7 @@ for (target_column in hsp_cols){
   
   repeats_res <- foreach(i=seq(1, n_repeats)) %dopar% {
 
-  # train/test split
+    # train/test split
     splitted_dataset <- get_train_test_split(data=all_data, target_col=target_column, start_pos_col="from", chr_col="chr", 
                          feature_cols=all_features_cols, train_ratio=train_ratio, seed=i)
     x_train <- splitted_dataset[["x_train"]]
@@ -310,9 +334,3 @@ for (target_column in hsp_cols){
   
   pb$tick()
 }
-
-
-
-
-# https://rmarkdown.rstudio.com/articles_intro.html
-# https://bookdown.org/yihui/rmarkdown/pdf-document.html#latex-options

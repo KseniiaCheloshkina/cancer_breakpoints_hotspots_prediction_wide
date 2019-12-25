@@ -23,7 +23,7 @@ bkpt <- bkpt[select_cols]
 
 
 
-win_len <- 1000000
+win_len <- 100000
 
 # aggregate to win_len
 if (win_len == 10000){
@@ -92,6 +92,10 @@ for (col in quantity_names){
 
 densities <- bkpt_data %>%
   select_at(vars(contains("density")))
+
+densities_id <- bkpt_data %>%
+  select(c("chr", "from", "to", names(densities)))
+write.csv(densities_id, "data/target/density_100000.csv")
 
 cor_densities <- cor(densities, method="spearman")
 

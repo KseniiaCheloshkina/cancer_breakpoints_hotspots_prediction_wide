@@ -8,6 +8,7 @@ library(reshape2)
 library(ggplot2)
 
 library(doParallel)
+library(progress)
 
 library(caret)
 library(randomForest)
@@ -142,6 +143,13 @@ neg_data_train <- all_neg_label[tr_neg, ]
 
 all_results <- data.frame()
 
+# set progress bar
+n_iterations <- length(all_target_cols)
+pb <- progress_bar$new(
+  format = "  Modeling [:bar] :percent. Elapsed: :elapsedfull ETA: :eta",
+  total = n_iterations, clear = FALSE, width=120)
+pb$tick(0)
+
 for (target_column in all_target_cols){
   
   cancer_pos_label_data <- all_data[all_data[target_column] == 1, ]
@@ -165,6 +173,7 @@ for (target_column in all_target_cols){
     summaryFunction = twoClassSummary,
     seeds = seq(1, n_repeats))
   # set "seeds" parameters to make results reproducible
+  
   mtryGrid <- expand.grid(mtry = 5)
   
   one_iter_res <- foreach(i=seq(1, n_repeats), .combine = rbind) %dopar% {
@@ -189,19 +198,18 @@ for (target_column in all_target_cols){
     levels(y_test) <- c("X0", "X1")
     
     # limit outliers
-    all_numerical_cols <- intersect(all_features_cols, all_numerical_features)
-    data_tr <- limit_outliers(x_train = x_train, x_test = x_test, 
-                              features = all_numerical_cols, iqr_multiplicator = 3)
-    all_bin_cols <- setdiff(all_features_cols, all_numerical_cols)
+    # all_numerical_cols <- intersect(all_features_cols, all_numerical_features)
+    # data_tr <- limit_outliers(x_train = x_train, x_test = x_test, 
+    #                           features = all_numerical_cols, iqr_multiplicator = 3)
+    # all_bin_cols <- setdiff(all_features_cols, all_numerical_cols)
     
-    x_train <- x_train %>% 
-      select(all_bin_cols) %>%
-      cbind(data_tr[['train']])
-      
-    x_test <- x_test %>% 
-      select(all_bin_cols) %>%
-      cbind(data_tr[['test']])
-
+    # x_train <- x_train %>% 
+    #   select(all_bin_cols) %>%
+    #   cbind(data_tr[['train']])
+    #   
+    # x_test <- x_test %>% 
+    #   select(all_bin_cols) %>%
+    #   cbind(data_tr[['test']])
     
     feat_groups <- list()
     feat_groups[["base"]] <- intersect(features_cols, all_features_cols) 
@@ -233,9 +241,9 @@ for (target_column in all_target_cols){
         metric="ROC",   
         maximize = TRUE,
         trControl = trCtrl,
-        ntree = 1000,
-        nodesize = 70,
-        maxnodes = 10,
+        ntree = 500,
+        nodesize = 30,
+        maxnodes = 3,
         sampsize = c(X0 = floor(length(tr_pos) * 5), X1 = length(tr_pos)),
         tuneGrid = mtryGrid
       )
@@ -261,37 +269,9 @@ for (target_column in all_target_cols){
   
   one_iter_res$cancer_type <- cancer_type  
   all_results <- rbind(all_results, one_iter_res)
-  
-  
+  pb$tick()
+  write.csv(all_results, file = "data/output/feature_engineering.csv")
 }
-
-all_results$diff_auc <- all_results$tr_auc - all_results$te_auc
-write.csv(all_results, file = "data/output/feature_engineering.csv")
-
-
-
-all_results <- read.csv(file = "data/output/feature_engineering.csv")
-
-all_results_reshaped <- dcast(data = all_results, formula = iter + cancer_type ~ features_group, value.var = "te_auc")
-
-for (col in c( "base_with_binary_flags" , "base_with_higher_level_feats", "base_with_maximums")){
-  all_results_reshaped <- all_results_reshaped %>%
-    mutate(!!as.name(paste0(col, "_diff")) := !!as.name(col) - base)
-}
-all_results_reshaped_plot <- melt(data = all_results_reshaped, id.vars = c("cancer_type", "iter"), 
-                                  measure.vars = c( "base_with_binary_flags_diff" , "base_with_higher_level_feats_diff", "base_with_maximums_diff"))
-ggplot(all_results_reshaped_plot, aes(value, fill=variable)) +
-  geom_density(alpha = 0.5) +
-  facet_wrap(~cancer_type)+
-  geom_vline(xintercept = 0)
-
-mean_diff <- all_results_reshaped %>%
-  group_by(cancer_type) %>%
-  summarize(
-    mean(base_with_binary_flags_diff),
-    mean(base_with_higher_level_feats_diff),
-    mean(base_with_maximums_diff)
-  )
 
 
 
@@ -302,6 +282,13 @@ mean_diff <- all_results_reshaped %>%
 
 
 ### CHECK BINARY ONLY
+
+# set progress bar
+n_iterations <- length(all_target_cols)
+pb <- progress_bar$new(
+  format = "  Modeling [:bar] :percent. Elapsed: :elapsedfull ETA: :eta",
+  total = n_iterations, clear = FALSE, width=120)
+pb$tick(0)
 
 for (target_column in all_target_cols){
   
@@ -351,17 +338,17 @@ for (target_column in all_target_cols){
     
     # limit outliers
     all_numerical_cols <- intersect(all_features_cols, all_numerical_features)
-    data_tr <- limit_outliers(x_train = x_train, x_test = x_test, 
-                              features = all_numerical_cols, iqr_multiplicator = 3)
-    all_bin_cols <- setdiff(all_features_cols, all_numerical_cols)
-    
-    x_train <- x_train %>% 
-      select(all_bin_cols) %>%
-      cbind(data_tr[['train']])
-    
-    x_test <- x_test %>% 
-      select(all_bin_cols) %>%
-      cbind(data_tr[['test']])
+    # data_tr <- limit_outliers(x_train = x_train, x_test = x_test,
+    #                           features = all_numerical_cols, iqr_multiplicator = 3)
+    # all_bin_cols <- setdiff(all_features_cols, all_numerical_cols)
+    # 
+    # x_train <- x_train %>% 
+    #   select(all_bin_cols) %>%
+    #   cbind(data_tr[['train']])
+    # 
+    # x_test <- x_test %>% 
+    #   select(all_bin_cols) %>%
+    #   cbind(data_tr[['test']])
     
     
     feat_groups <- list()
@@ -387,13 +374,13 @@ for (target_column in all_target_cols){
         metric="ROC",
         maximize = TRUE,
         trControl = trCtrl,
-        ntree = 1000,
-        nodesize = 70,
-        maxnodes = 10,
+        ntree = 500,
+        nodesize = 30,
+        maxnodes = 3,
         sampsize = c(X0 = floor(length(tr_pos) * 5), X1 = length(tr_pos)),
         tuneGrid = mtryGrid
       )
-      
+
       # ROC AUC
       train_pred <- predict(model, newdata = x_train[features_nm], type = "prob")
       test_pred <- predict(model, newdata = x_test[features_nm], type = "prob")
@@ -415,30 +402,7 @@ for (target_column in all_target_cols){
   
   one_iter_res$cancer_type <- cancer_type  
   all_results <- rbind(all_results, one_iter_res)
-  
-  
+  pb$tick()
+  write.csv(all_results, file = "data/output/feature_engineering_only_binary.csv")
 }
 
-all_results$diff_auc <- all_results$tr_auc - all_results$te_auc
-write.csv(all_results, file = "data/output/feature_engineering_only_binary.csv")
-
-
-all_results_reshaped <- dcast(data = all_results, formula = iter + cancer_type ~ features_group, value.var = "te_auc")
-
-for (col in c( "binary_flags" , "binary_with_maximums")){
-  all_results_reshaped <- all_results_reshaped %>%
-    mutate(!!as.name(paste0(col, "_diff")) := !!as.name(col) - base)
-}
-all_results_reshaped_plot <- melt(data = all_results_reshaped, id.vars = c("cancer_type", "iter"), 
-                                  measure.vars = c( "binary_with_maximums_diff", "binary_flags_diff"))
-ggplot(all_results_reshaped_plot, aes(value, fill=variable)) +
-  geom_density(alpha = 0.5) +
-  facet_wrap(~cancer_type)+
-  geom_vline(xintercept = 0)
-
-mean_diff <- all_results_reshaped %>%
-  group_by(cancer_type) %>%
-  summarize(
-    mean(binary_with_maximums_diff),
-    mean(binary_flags_diff)
-  )

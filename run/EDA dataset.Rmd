@@ -8,17 +8,22 @@ output:
     fig_caption: yes
     fig_height: 8
     fig_width: 10
+  html_notebook: default
   pdf_document: default
 ---
 
 ```{r setup, include=FALSE, echo=FALSE}
 # tinytex::install_tinytex()
 library(dplyr)
-library(ggplot2)
 library(reshape2)
-library(GGally)
 
-win_len <- 1000000
+library(ggplot2)
+library(GGally)
+library(wesanderson)
+library(ggsci)
+pal <- wes_palette("Zissou1", 100, type = "continuous")
+
+win_len <- 100000
 
 # load data
 data <- read.csv(
@@ -92,8 +97,9 @@ melted_chr_stats$variable <- gsub(x = melted_chr_stats$variable,
 names(melted_chr_stats) <- c("chr", "cancer_type", "ratio_of_hotspots")
 
 ggplot(melted_chr_stats, aes(cancer_type, chr)) +
-  geom_tile(aes(fill = ratio_of_hotspots))
+  geom_tile(aes(fill = ratio_of_hotspots)) + scale_fill_gradientn(colours = pal)
 ```
+
 
 Let's discover if there are cancer types which have the same hotspots for given ratio of windows marked as hotspots.
 
@@ -176,7 +182,7 @@ new_tissue_spec <- setdiff(feat_names, new_conserved)
 
 Correlations between features:
 
-```{r}
+```{r fig.width=15, fig.height=10}
 
 cormat <- round(cor(data[feat_names], method = "spearman"), 2)
 
@@ -189,13 +195,10 @@ cormat <- reorder_cormat(cormat)
 melted_cormat <- melt(cormat, na.rm = TRUE)
 
 ggplot(melted_cormat, aes(Var2, Var1, fill = value))+
- geom_tile(color = "white")+
- scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
-   midpoint = 0, limit = c(-1,1), space = "Lab", 
-    name="Spearman\nCorrelation") +
+  geom_tile()+
   theme_minimal()+ # minimal theme
- theme(axis.text.x = element_text(angle = 45, vjust = 1, 
-    size = 12, hjust = 1))
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 12, hjust = 1))  + scale_fill_gradientn(colours = pal)
 ```
 
 Distribution of correlation value of all pairs of features
@@ -204,6 +207,113 @@ Distribution of correlation value of all pairs of features
 ggplot(melted_cormat, aes(value)) + 
   geom_histogram(bins = 50)
 
+```
+
+Distribution of mean correlation between groups of features
+
+```{r}
+feat_groups <- data.frame(
+  feat = c("A_Phased_Repeat","Direct_Repeat", "Inverted_Repeat", "Mirror_Repeat","Short_Tandem_Repeat",
+             "G_quadruplex", "stemloops_16_50", "stemloops_6_15", "Z_DNA_Motif"),
+  feat_group = "sec_str" 
+)
+feat_groups <- rbind(feat_groups, data.frame(
+  feat = c("X3UTR", "X5UTR", "codingExons", "downstream", "introns", "promoters", "WholeGenes"),
+  feat_group = "reg"   
+))
+feat_groups <- rbind(feat_groups, data.frame(
+  feat = c("tad_boundaries_liver", "tad_boundaries_ovary", "tad_boundaries_pancreatic"),
+  feat_group = "tad"   
+))
+feat_groups <- rbind(feat_groups, data.frame(
+  feat = c("cancer_skin_DNase_seq", "cancer_brain_DNase_seq", "cancer_blood_DNase_seq",
+              "cancer_prostate_DNase_seq", "cancer_pancreas_DNase_seq", "cancer_ovary_DNase_seq",
+              "cancer_liver_DNase_seq", "cancer_breast_DNase_seq", "cancer_uterus_DNase_seq",
+              "cancer_bone_DNase_seq"), 
+  feat_group = "chromatin"   
+)) 
+feat_groups <- rbind(feat_groups, data.frame(
+  feat = c("cancer_brain_DNA_methylation", "cancer_breast_DNA_methylation",
+            "cancer_liver_DNA_methylation", "cancer_pancreas_DNA_methylation",
+            "cancer_skin_DNA_methylation", "cancer_uterus_DNA_methylation"), 
+  feat_group = "methyl"   
+)) 
+feat_groups <- rbind(feat_groups, data.frame(
+  feat = c( "cancer_liver_H3K27ac.human", "cancer_uterus_H3K27ac.human", "cancer_blood_H3K27ac.human",
+               "cancer_brain_H3K27ac.human",
+               "cancer_pancreas_H3K27ac.human","cancer_blood_H3K27me3.human","cancer_brain_H3K27me3.human",    
+               "cancer_blood_H3K36me3.human","cancer_pancreas_H3K36me3.human","cancer_brain_H3K36me3.human",    
+               "cancer_pancreas_H3K4me1.human","cancer_blood_H3K4me1.human","cancer_brain_H3K4me1.human",
+               "cancer_breast_H3K4me3.human","cancer_uterus_H3K4me3.human","cancer_liver_H3K4me3.human",
+               "cancer_brain_H3K4me3.human","cancer_blood_H3K4me3.human","cancer_skin_H3K4me3.human",
+               "cancer_pancreas_H3K4me3.human","cancer_brain_H3K9me3.human","cancer_pancreas_H3K9me3.human",
+               "cancer_blood_H3K9me3.human" ), 
+  feat_group = "histones"   
+)) 
+feat_groups <- rbind(feat_groups, data.frame(
+  feat = c("cancer_liver_ATF3.human", "cancer_liver_CTCF.human", "cancer_pancreas_CTCF.human",
+        "cancer_liver_EGR1.human", "cancer_liver_FOXA1.human", "cancer_liver_FOXA2.human", 
+        "cancer_liver_GABPA.human","cancer_liver_HNF4A.human", "cancer_liver_HNF4G.human",
+        "cancer_liver_JUND.human","cancer_liver_MAX.human", "cancer_liver_NR2F2.human",
+        "cancer_liver_REST.human", "cancer_liver_RXRA.human", "cancer_liver_SP1.human",
+        "cancer_liver_YY1.human", "cancer_liver_ZBTB33.human"), 
+  feat_group = "tf"   
+))
+
+melted_cormat <- melted_cormat %>%
+  inner_join(feat_groups, by=c("Var1" = "feat")) %>%
+  rename("feat_group1" = "feat_group") %>%
+  inner_join(feat_groups, by=c("Var2" = "feat")) %>%
+  rename("feat_group2" = "feat_group")
+melted_cormat <- melted_cormat[melted_cormat$Var1 != melted_cormat$Var2, ]
+ggplot(data=melted_cormat, aes(value))+
+  geom_density()+
+  facet_grid(feat_group1 ~ feat_group2)
+
+```
+
+```{r}
+feat_group_stats <- melted_cormat %>%
+  group_by(feat_group1, feat_group2) %>%
+  summarize(
+    q1 = quantile(value, 0.25),
+    q2 = quantile(value, 0.5),
+    q3 = quantile(value, 0.75)
+  )
+
+feat_group_stats %>%
+  filter(feat_group1 == feat_group2) %>%
+  arrange(q1)
+```
+
+```{r}
+feat_group_stats %>%
+  filter(feat_group1 != feat_group2) %>%
+  arrange(feat_group1, q1)
+```
+
+
+```{r}
+feat_group_stats %>%
+  filter(feat_group1 != feat_group2) %>%
+  group_by(feat_group1) %>%
+  filter(q3 == max(q3)) %>%
+  select(-c("q1", "q2")) %>%
+  arrange(q3)
+```
+```{r}
+feat_group_stats %>%
+  filter(feat_group1 != feat_group2) %>%
+  group_by(feat_group1) %>%
+  filter(q1 == max(q1)) %>%
+  select(-c("q3", "q2")) %>%
+  arrange(q1)
+```
+```{r}
+feat_group_stats %>%
+  group_by(feat_group1,feat_group2) %>%
+  summarize(med = median(q2)) %>%
+  ggplot(aes(x=feat_group1, y=feat_group2, fill=med)) + geom_tile()  + scale_fill_gradientn(colours = pal)
 ```
 
 Distribution of features

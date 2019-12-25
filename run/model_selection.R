@@ -6,7 +6,7 @@ library(dplyr)
 library(reshape2)
 
 library(ggplot2)
-
+library(progress)
 library(doParallel)
 
 library(caret)
@@ -17,18 +17,18 @@ library(pROC)
 
 source("run/tools.R")
 
-n_cores <- 14
+n_cores <- 15
 registerDoParallel(n_cores)
 
 set.seed(7)
-win_len <- 1000000
+win_len <- 100000
 
 # load data
 data <- read.csv(
   paste0("data/datasets/dataset_", format(win_len, scientific = FALSE), ".csv")
 )
 
-hsp_cols <- grep(x = names(data), pattern = "hsp",value = TRUE)
+hsp_cols <- grep(x = names(data), pattern = "hsp", value = TRUE)
 
 conserved_features <- c(
   "A_Phased_Repeat", "Direct_Repeat", 
@@ -49,7 +49,7 @@ tissue_spec_feats <- setdiff(names(data), c("chr","from","to", hsp_cols, conserv
 
 
 
-####################################### MODEL SELECTION FOR RANDOM FOREST WITHOUT LIMITING OUTLIERS
+################################## MODEL SELECTION FOR RANDOM FOREST WITHOUT LIMITING OUTLIERS
 agg_level <- "_99._"
 init_ratio <- 0.5
 train_ratio <- 0.7
@@ -64,7 +64,8 @@ all_pos_map <- data.frame()
 for (chr in chrs){
   starts <- data[data$chr == chr, 'from']
   starts <- starts[order(starts)]
-  bin_name <- cut(starts, breaks = 4, labels = c("first_bin","second_bin","third_bin","last_bin"),
+  bin_name <- cut(starts, breaks = 4, labels = c("first_bin", "second_bin", "third_bin", 
+                                                 "last_bin"),
                   include.lowest = TRUE, right = FALSE)
   pos_map <- data.frame(from = starts, pos_bin = bin_name, chr = chr)
   all_pos_map <- rbind(all_pos_map, pos_map)
@@ -86,16 +87,25 @@ neg_data_train <- all_neg_label[tr_neg, ]
 
 all_results <- data.frame()
 
+# set progress bar
+n_iterations <- length(all_target_cols)
+pb <- progress_bar$new(
+  format = "  Modeling [:bar] :percent. Elapsed: :elapsedfull ETA: :eta",
+  total = n_iterations, clear = FALSE, width=120)
+pb$tick(0)
+
 for (target_column in all_target_cols){
   
   cancer_pos_label_data <- data[data[target_column] == 1, ]
   set.seed(7)
-  tr_pos <- sample(rownames(cancer_pos_label_data), size = floor(init_ratio * nrow(cancer_pos_label_data)), 
+  tr_pos <- sample(rownames(cancer_pos_label_data), 
+                   size = floor(init_ratio * nrow(cancer_pos_label_data)), 
                    replace = FALSE)
   pos_data_train <- cancer_pos_label_data[tr_pos, ]
 
   cancer_type <- strsplit(target_column, "_")[[1]][3]
-  all_features_cols <- c(conserved_features, grep(x =  tissue_spec_feats, pattern = cancer_type, value = TRUE))
+  all_features_cols <- c(conserved_features, 
+                         grep(x =  tissue_spec_feats, pattern = cancer_type, value = TRUE))
   
   par_df <- expand.grid(mtry = c(3, 4, 5, 6), 
                         ntree = c(500, 1000), 
@@ -106,7 +116,7 @@ for (target_column in all_target_cols){
   n_repeats <- 30
   
   for (i in seq(1, n_repeats)){
-    
+    print(i)
     set.seed(i)
     tr_neg <- createDataPartition(neg_data_train$strata, p = train_ratio, list = FALSE)
 
@@ -154,7 +164,7 @@ for (target_column in all_target_cols){
       model <- train(
         x = x_train, 
         y = y_train,
-        preProcess = c("YeoJohnson", "center", "scale"),
+        preProcess = c("zv", "YeoJohnson", "center", "scale"),
         method = "rf",
         metric="ROC",   
         maximize = TRUE,
@@ -165,7 +175,7 @@ for (target_column in all_target_cols){
         sampsize = c(X0 = floor(length(tr_pos) * 5), X1 = length(tr_pos)),
         tuneGrid = mtryGrid
       )
-      
+
       train_pred <- predict(model, newdata = x_train, type = "prob")
       test_pred <- predict(model, newdata = x_test, type = "prob")
       
@@ -182,110 +192,19 @@ for (target_column in all_target_cols){
     res_iter$iter <- i
     res_iter$cancer_type <- cancer_type
     all_results <- rbind(all_results, res_iter)
+    write.csv(all_results, file = "data/output/model_selection/hp_rf.csv")
     
   }
-  
+  pb$tick()
 }
 
-all_results$diff_auc <- all_results$tr_auc - all_results$te_auc
-write.csv(all_results, file = "data/output/model_selection/hp_rf.csv")
 
 
-## analysis of results
-all_results <- read.csv("data/output/model_selection/hp_rf.csv")
-res_all <- all_results %>%
-  group_by(cancer_type) %>%
-  summarize(
-    min_te_auc = min(te_auc),
-    q10 = quantile(te_auc, 0.1),
-    q20 = quantile(te_auc, 0.2),
-    q30 = quantile(te_auc, 0.3),
-    sd = sd(te_auc)
-  ) %>%
-  arrange(cancer_type)
 
-good_cancers_nm <- c("breast", "prostate")
-
-pred_cancers_data <- all_results %>%
-  filter(cancer_type %in% good_cancers_nm)
-
-ggplot(pred_cancers_data, aes(te_auc)) +
-  geom_density(alpha = 0.5) +
-  facet_wrap(~ cancer_type)
-
-ggplot(all_results, aes(te_auc)) +
-  geom_density(alpha = 0.5) +
-  facet_wrap(~ cancer_type)
-
-all_results %>%
-  filter(cancer_type %in% good_cancers_nm) %>%
-  group_by(ntree) %>%
-  summarize(
-    min_te_auc = min(te_auc),
-    q10 = quantile(te_auc, 0.1),
-    q30 = quantile(te_auc, 0.3),
-    q70 = quantile(te_auc, 0.7),
-    max_te = max(te_auc)
-  ) %>%
-  arrange(min_te_auc)
-
-gb_pars <- pred_cancers_data %>%
-  group_by(ntree, nodesize, maxnodes, mtry, cancer_type) %>%
-  summarize(
-    mean_d = mean(diff_auc),
-    med = median(diff_auc),
-    sd = sd(te_auc)
-  ) %>%
-  group_by(cancer_type) %>%
-  mutate(
-    mean_rank = dense_rank(mean_d),
-    med_rank = dense_rank(med),
-    sd_rank = ntile(sd, 5)
-  )
-
-gb_pars <- gb_pars %>%
-  group_by(ntree, nodesize, maxnodes, mtry) %>%
-  summarize(
-    mean_rank = mean(mean_rank),
-    med_rank = mean(med_rank),
-    sd_rank = mean(sd_rank)
-  ) %>%
-  mutate(summed_rank = mean_rank + med_rank + sd_rank)
-
-gb_pars %>%
-  ungroup() %>%
-  filter(summed_rank == min(summed_rank))
-
-
-opt_pars <- all_results %>%
-  filter(
-    nodesize == 50,
-    ntree == 500,
-    maxnodes == 3,
-    mtry == 6
-  )
-
-res_opt <- opt_pars %>%
-  group_by(cancer_type) %>%
-  summarize(
-    min_te_auc = min(te_auc),
-    q10 = quantile(te_auc, 0.1),
-    q20 = quantile(te_auc, 0.2),
-    med_te_auc = median(te_auc),
-    mean_te_auc = mean(te_auc),
-    q80 = quantile(te_auc, 0.8),
-    q90 = quantile(te_auc, 0.9),
-    max_te_auc = max(te_auc),
-    sd = sd(te_auc)
-  ) %>%
-  arrange(cancer_type)
-
-ggplot(opt_pars, aes(te_auc)) +
-  geom_density(alpha = 0.5) +
-  facet_wrap(~ cancer_type)
 
 
 ####################################### MODEL SELECTION FOR RANDOM FOREST WITH LIMITING OUTLIERS
+
 agg_level <- "_99._"
 init_ratio <- 0.5
 train_ratio <- 0.7
@@ -321,6 +240,16 @@ tr_neg <- createDataPartition(all_neg_label$strata, p = init_ratio, list = FALSE
 neg_data_train <- all_neg_label[tr_neg, ]
 
 all_results <- data.frame()
+
+
+# all_target_cols <- all_target_cols[all_target_cols != "hsp_99._blood"]
+
+# set progress bar
+n_iterations <- length(all_target_cols)
+pb <- progress_bar$new(
+  format = "  Modeling [:bar] :percent. Elapsed: :elapsedfull ETA: :eta",
+  total = n_iterations, clear = FALSE, width=120)
+pb$tick(0)
 
 for (target_column in all_target_cols){
   
@@ -390,7 +319,7 @@ for (target_column in all_target_cols){
       model <- train(
         x = x_train, 
         y = y_train,
-        preProcess = c("YeoJohnson", "center", "scale"),
+        preProcess = c("zv", "YeoJohnson", "center", "scale"),
         method = "rf",
         metric="ROC",   
         maximize = TRUE,
@@ -420,107 +349,11 @@ for (target_column in all_target_cols){
     all_results <- rbind(all_results, res_iter)
     
   }
-  
+  pb$tick()
+  write.csv(all_results, file = "data/output/model_selection/hp_rf_lo.csv")
 }
 
-all_results$diff_auc <- all_results$tr_auc - all_results$te_auc
-write.csv(all_results, file = "data/output/model_selection/hp_rf_lo.csv")
-
-
-## analysis of results
-all_results <- read.csv("data/output/model_selection/hp_rf_lo.csv")
-res_all <- all_results %>%
-  group_by(cancer_type) %>%
-  summarize(
-    min_te_auc = min(te_auc),
-    q10 = quantile(te_auc, 0.1),
-    q20 = quantile(te_auc, 0.2),
-    q30 = quantile(te_auc, 0.3),
-    sd = sd(te_auc)
-  ) %>%
-  arrange(cancer_type)
-
-good_cancers_nm <- c("breast", "prostate")
-
-pred_cancers_data <- all_results %>%
-  filter(cancer_type %in% good_cancers_nm)
-
-ggplot(pred_cancers_data, aes(te_auc)) +
-  geom_density(alpha = 0.5) +
-  facet_wrap(~ cancer_type)
-
-ggplot(all_results, aes(te_auc)) +
-  geom_density(alpha = 0.5) +
-  facet_wrap(~ cancer_type)
-
-all_results %>%
-  filter(cancer_type %in% good_cancers_nm) %>%
-  group_by(ntree) %>%
-  summarize(
-    min_te_auc = min(te_auc),
-    q10 = quantile(te_auc, 0.1),
-    q30 = quantile(te_auc, 0.3),
-    q70 = quantile(te_auc, 0.7),
-    max_te = max(te_auc)
-  ) %>%
-  arrange(min_te_auc)
-
-gb_pars <- pred_cancers_data %>%
-  group_by(ntree, nodesize, maxnodes, mtry, cancer_type) %>%
-  summarize(
-    mean_d = mean(diff_auc),
-    med = median(diff_auc),
-    sd = sd(te_auc)
-  ) %>%
-  group_by(cancer_type) %>%
-  mutate(
-    mean_rank = dense_rank(mean_d),
-    med_rank = dense_rank(med),
-    sd_rank = ntile(sd, 5)
-  )
-
-gb_pars <- gb_pars %>%
-  group_by(ntree, nodesize, maxnodes, mtry) %>%
-  summarize(
-    mean_rank = mean(mean_rank),
-    med_rank = mean(med_rank),
-    sd_rank = mean(sd_rank)
-  ) %>%
-  mutate(summed_rank = mean_rank + med_rank + sd_rank)
-
-gb_pars %>%
-  ungroup() %>%
-  filter(summed_rank == min(summed_rank))
-
-
-opt_pars <- all_results %>%
-  filter(
-    nodesize == 70,
-    ntree == 1000,
-    maxnodes == 10,
-    mtry == 5
-  )
-
-res_opt <- opt_pars %>%
-  group_by(cancer_type) %>%
-  summarize(
-    min_te_auc = min(te_auc),
-    q10 = quantile(te_auc, 0.1),
-    q20 = quantile(te_auc, 0.2),
-    med_te_auc = median(te_auc),
-    mean_te_auc = mean(te_auc),
-    q80 = quantile(te_auc, 0.8),
-    q90 = quantile(te_auc, 0.9),
-    max_te_auc = max(te_auc),
-    sd = sd(te_auc)
-  ) %>%
-  arrange(cancer_type)
-
-ggplot(opt_pars, aes(te_auc)) +
-  geom_density(alpha = 0.5) +
-  facet_wrap(~ cancer_type)
-
-## select limit outlies as obligatiry preprocessing step
+## select not to limit outlies
 
 
 
@@ -631,6 +464,13 @@ neg_data_train <- all_neg_label[tr_neg, ]
 
 all_results <- data.frame()
 
+# set progress bar
+n_iterations <- length(all_target_cols)
+pb <- progress_bar$new(
+  format = "  Modeling [:bar] :percent. Elapsed: :elapsedfull ETA: :eta",
+  total = n_iterations, clear = FALSE, width=120)
+pb$tick(0)
+
 for (target_column in all_target_cols){
   
   cancer_pos_label_data <- data[data[target_column] == 1, ]
@@ -674,10 +514,10 @@ for (target_column in all_target_cols){
     levels(y_test) <- c("X0", "X1")
     
     # limit outliers
-    data_tr <- limit_outliers(x_train = x_train, x_test = x_test, 
-                              features = all_features_cols, iqr_multiplicator = 3)
-    x_train <- data_tr[['train']]
-    x_test <- data_tr[['test']]
+    # data_tr <- limit_outliers(x_train = x_train, x_test = x_test, 
+    #                           features = all_features_cols, iqr_multiplicator = 3)
+    # x_train <- data_tr[['train']]
+    # x_test <- data_tr[['test']]
     
     # fit models
     trCtrl <- trainControl(
@@ -706,7 +546,7 @@ for (target_column in all_target_cols){
       model <- train(
         x = x_train, 
         y = y_train,
-        preProcess = c("YeoJohnson", "center", "scale"),
+        preProcess = c("zv", "YeoJohnson", "center", "scale"),
         method = PlsRf,
         metric="ROC",   
         maximize = TRUE,
@@ -733,101 +573,14 @@ for (target_column in all_target_cols){
     all_results <- rbind(all_results, res_iter)
     
   }
-  
+  pb$tick()
+  write.csv(all_results, file = "data/output/model_selection/hp_rf_pls_lo.csv")
 }
 
 all_results$diff_auc <- all_results$tr_auc - all_results$te_auc
-write.csv(all_results, file = "data/output/model_selection/hp_rf_pls_lo.csv")
 
 
-## analysis of results
-all_results <- read.csv("data/output/model_selection/hp_rf_pls_lo.csv")
-res_all <- all_results %>%
-  group_by(cancer_type) %>%
-  summarize(
-    min_te_auc = min(te_auc),
-    q10 = quantile(te_auc, 0.1),
-    q20 = quantile(te_auc, 0.2),
-    q30 = quantile(te_auc, 0.3),
-    sd = sd(te_auc)
-  ) %>%
-  arrange(cancer_type)
 
-# make decision on alll cancer types
-pred_cancers_data <- all_results
-
-ggplot(pred_cancers_data, aes(te_auc)) +
-  geom_density(alpha = 0.5) +
-  facet_wrap(~ cancer_type)
-
-ggplot(all_results, aes(te_auc)) +
-  geom_density(alpha = 0.5) +
-  facet_wrap(~ cancer_type)
-
-all_results %>%
-  group_by(ntree) %>%
-  summarize(
-    min_te_auc = min(te_auc),
-    q10 = quantile(te_auc, 0.1),
-    q30 = quantile(te_auc, 0.3),
-    q70 = quantile(te_auc, 0.7),
-    max_te = max(te_auc)
-  ) %>%
-  arrange(min_te_auc)
-
-gb_pars <- pred_cancers_data %>%
-  group_by(ntree, nodesize, maxnodes, mtry, ncomp, cancer_type) %>%
-  summarize(
-    mean_d = mean(diff_auc),
-    med = median(diff_auc),
-    sd = sd(te_auc)
-  ) %>%
-  group_by(cancer_type) %>%
-  mutate(
-    mean_rank = dense_rank(mean_d),
-    med_rank = dense_rank(med),
-    sd_rank = ntile(sd, 5)
-  )
-gb_pars <- gb_pars %>%
-  group_by(ntree, nodesize, maxnodes, mtry, ncomp) %>%
-  summarize(
-    mean_rank = mean(mean_rank),
-    med_rank = mean(med_rank),
-    sd_rank = mean(sd_rank)
-  ) %>%
-  mutate(summed_rank = mean_rank + med_rank + sd_rank)
-
-gb_pars %>%
-  ungroup() %>%
-  filter(summed_rank == min(summed_rank))
-
-opt_pars <- all_results %>%
-  filter(
-    nodesize == 50,
-    ntree == 1000,
-    maxnodes == 8,
-    mtry == 3,
-    ncomp == 15
-  )
-
-res_opt <- opt_pars %>%
-  group_by(cancer_type) %>%
-  summarize(
-    min_te_auc = min(te_auc),
-    q10 = quantile(te_auc, 0.1),
-    q20 = quantile(te_auc, 0.2),
-    med_te_auc = median(te_auc),
-    mean_te_auc = mean(te_auc),
-    q80 = quantile(te_auc, 0.8),
-    q90 = quantile(te_auc, 0.9),
-    max_te_auc = max(te_auc),
-    sd = sd(te_auc)
-  ) %>%
-  arrange(cancer_type)
-
-ggplot(opt_pars, aes(te_auc)) +
-  geom_density(alpha = 0.5) +
-  facet_wrap(~ cancer_type)
 
 
 
@@ -896,6 +649,14 @@ neg_data_train <- all_neg_label[tr_neg, ]
 
 all_results <- data.frame()
 
+# set progress bar
+n_iterations <- length(all_target_cols)
+pb <- progress_bar$new(
+  format = "  Modeling [:bar] :percent. Elapsed: :elapsedfull ETA: :eta",
+  total = n_iterations, clear = FALSE, width=120)
+pb$tick(0)
+
+
 for (target_column in all_target_cols){
   
   set.seed(7)
@@ -957,7 +718,7 @@ for (target_column in all_target_cols){
       model <- train(
         x = x_train, 
         y = y_train,
-        preProcess = c("YeoJohnson", "center", "scale", "pca"),
+        preProcess = c("zv", "YeoJohnson", "center", "scale", "pca"),
         method = "rf",
         metric="ROC",   
         maximize = TRUE,
@@ -994,103 +755,13 @@ for (target_column in all_target_cols){
     all_results <- rbind(all_results, res_iter)
     
   }
-  
+  pb$tick()
+  write.csv(all_results, file = "data/output/model_selection/hp_rf_pca_lo.csv")
 }
-all_results$diff_auc <- all_results$tr_auc - all_results$te_auc
-write.csv(all_results, file = "data/output/model_selection/hp_rf_pca_lo.csv")
 
 
-## analysis of results
 
-all_results <- read.csv("data/output/model_selection/hp_rf_pca_lo.csv")
-res_all <- all_results %>%
-  group_by(cancer_type) %>%
-  summarize(
-    min_te_auc = min(te_auc),
-    q10 = quantile(te_auc, 0.1),
-    q20 = quantile(te_auc, 0.2),
-    q30 = quantile(te_auc, 0.3),
-    sd = sd(te_auc)
-  ) %>%
-  arrange(cancer_type)
 
-good_cancers_nm <- c("prostate", "brain")
-pred_cancers_data <- all_results %>%
-  filter(cancer_type %in% good_cancers_nm)
-
-ggplot(pred_cancers_data, aes(te_auc)) +
-  geom_density(alpha = 0.5) +
-  facet_wrap(~ cancer_type)
-
-ggplot(all_results, aes(te_auc)) +
-  geom_density(alpha = 0.5) +
-  facet_wrap(~ cancer_type)
-
-all_results %>%
-  filter(cancer_type %in% good_cancers_nm) %>%
-  group_by(ntree) %>%
-  summarize(
-    min_te_auc = min(te_auc),
-    q10 = quantile(te_auc, 0.1),
-    q30 = quantile(te_auc, 0.3),
-    q70 = quantile(te_auc, 0.7),
-    max_te = max(te_auc)
-  ) %>%
-  arrange(min_te_auc)
-
-gb_pars <- pred_cancers_data %>%
-  group_by(ntree, nodesize, maxnodes, mtry, pcaComp, cancer_type) %>%
-  summarize(
-    mean_d = mean(diff_auc),
-    med = median(diff_auc),
-    sd = sd(te_auc)
-  ) %>%
-  group_by(cancer_type) %>%
-  mutate(
-    mean_rank = dense_rank(mean_d),
-    med_rank = dense_rank(med),
-    sd_rank = ntile(sd, 5)
-  )
-gb_pars <- gb_pars %>%
-  group_by(ntree, nodesize, maxnodes, mtry, pcaComp) %>%
-  summarize(
-    mean_rank = mean(mean_rank),
-    med_rank = mean(med_rank),
-    sd_rank = mean(sd_rank)
-  ) %>%
-  mutate(summed_rank = mean_rank + med_rank + sd_rank)
-
-gb_pars %>%
-  ungroup() %>%
-  filter(summed_rank == min(summed_rank))
-
-opt_pars <- all_results %>%
-  filter(
-    nodesize == 70,
-    ntree == 500,
-    maxnodes == 8,
-    mtry == 4,
-    pcaComp == 5
-  )
-
-res_opt <- opt_pars %>%
-  group_by(cancer_type) %>%
-  summarize(
-    min_te_auc = min(te_auc),
-    q10 = quantile(te_auc, 0.1),
-    q20 = quantile(te_auc, 0.2),
-    med_te_auc = median(te_auc),
-    mean_te_auc = mean(te_auc),
-    q80 = quantile(te_auc, 0.8),
-    q90 = quantile(te_auc, 0.9),
-    max_te_auc = max(te_auc),
-    sd = sd(te_auc)
-  ) %>%
-  arrange(cancer_type)
-
-ggplot(opt_pars, aes(te_auc)) +
-  geom_density(alpha = 0.5) +
-  facet_wrap(~ cancer_type)
 
 
 
@@ -1226,7 +897,7 @@ for (target_column in all_target_cols){
       model <- train(
         x = x_train, 
         y = y_train,
-        preProcess = c("YeoJohnson", "center", "scale"),
+        preProcess = c("zv", "YeoJohnson", "center", "scale"),
         method = "ada",
         metric="ROC",   
         maximize = TRUE,

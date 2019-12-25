@@ -19,17 +19,17 @@ library(dplyr)
 ## Returns data split stratified by target, chromosome and position in chromosome (divided on 4 parts)
 ##############################
 get_train_test_split <- function(data, target_col, start_pos_col, chr_col, feature_cols,
-                                 train_ratio, seed){
+                                 train_ratio, seed, dens_col=NULL){
   
   chrs <- c(
     "1","2","3","4","5","6","7","8","9","10",
     "11","12","13","14","15","16","17","18","19","20","21","22","X"
   )
   data[chr_col] <- lapply(data[chr_col], as.character)
-  
+
   # get position bins
   all_pos_map <- data.frame()
-  
+
   for (chr in chrs){
     starts <- data[data[chr_col] == chr, start_pos_col]
     starts <- starts[order(starts)]
@@ -42,29 +42,29 @@ get_train_test_split <- function(data, target_col, start_pos_col, chr_col, featu
   all_pos_map[chr_col] <- lapply(all_pos_map[chr_col], as.character)
   data <- data %>%
     inner_join(all_pos_map, by = c(chr_col, start_pos_col))
-  
+
   # create strata column by chromosome and quantile of position in chromosome
   data['strata'] <- paste0(data[chr_col], "_", data['pos_bin'])
-  
+
   # split data on examples with positive and negative target
   rownames(data) <- NULL
   pos_label_data <- data[data[target_col] == 1, ]
   neg_label_data <- data[data[target_col] == 0, ]
-  
+
   # split in train_ratio proportion stratified by strata column
   set.seed(seed)
   tr_neg <- createDataPartition(neg_label_data$strata, p = train_ratio, list = FALSE)
   data_train <- neg_label_data[tr_neg,]
   data_test  <- neg_label_data[-tr_neg,]
-  
+
   set.seed(seed)
   tr_pos <- createDataPartition(pos_label_data$strata, p = train_ratio, list = FALSE)
   data_train <- rbind(data_train, pos_label_data[tr_pos, ])
   data_test <- rbind(data_test, pos_label_data[-tr_pos, ])
-  
+
   x_train <- data_train[feature_cols]
   x_test <- data_test[feature_cols]
-  
+
   y_train <- as.factor(data_train[, target_col])
   levels(y_train) <- c("X0", "X1")
   y_test <- as.factor(data_test[, target_col])
@@ -76,8 +76,16 @@ get_train_test_split <- function(data, target_col, start_pos_col, chr_col, featu
   all_data[[3]] <- x_test
   all_data[[4]] <- y_test
   
-  names(all_data) <- c("x_train", "y_train", "x_test", "y_test")
-  
+  if (is.null(dens_col)) {
+    names(all_data) <- c("x_train", "y_train", "x_test", "y_test")
+  } else {
+    train_dens <- data_train[dens_col]
+    test_dens <- data_test[dens_col]
+    all_data[[5]] <- train_dens
+    all_data[[6]] <- test_dens    
+    names(all_data) <- c("x_train", "y_train", "x_test", "y_test", "density_train", "density_test")
+  }
+
   return(all_data)
 }
 
@@ -141,7 +149,7 @@ limit_outliers <- function(x_train, x_test, features, iqr_multiplicator = 3){
   # importance - feature importance from model
   # recall - recall data for different probability quantiles 
 ##############################
-get_model_quality <- function(train_pred, test_pred, model){
+get_model_quality <- function(train_pred, test_pred, model, quant=seq(0.01, 0.1, 0.01)){
   
   # ROC AUC
   tr_auc <- as.numeric(auc(cases = train_pred$X1[train_pred$target == "X1"], controls = train_pred$X1[train_pred$target == "X0"],
@@ -156,7 +164,6 @@ get_model_quality <- function(train_pred, test_pred, model){
   imp$feature <- rownames(imp)  
   rownames(imp) <- NULL
   
-  
   # recall
   test_pred <- test_pred[order(test_pred$X1, decreasing=TRUE), ]
   test_pred$target <- unlist(lapply(test_pred$target, as.character))
@@ -164,10 +171,30 @@ get_model_quality <- function(train_pred, test_pred, model){
   test_pred$target <- as.numeric(test_pred$target)
   test_pos <- sum(test_pred$target)
   
-  quant <- 1 - seq(0.5, 0.95, 0.05)
-  ind_q <- round(nrow(test_pred) * quant)
-  ratio_data <- as.data.frame(cbind(quant, sapply(ind_q, function(x) sum(test_pred$target[1:x]) / test_pos)))
-  names(ratio_data) <- c("quantile", "recall")
+  df_metr <- data.frame(quantile = quant, n_selected = round(nrow(test_pred) * quant))
+  df_metr1 <- apply(
+    df_metr, 
+    MARGIN = 1, 
+    function(x) {
+      data.frame(
+        quantile = x['quantile'],
+        n_selected = x['n_selected'],
+        recall = sum(test_pred$target[1:x['n_selected']]) / test_pos,
+        tp = sum(test_pred$target[1:x['n_selected']]),
+        precision = sum(test_pred$target[1:x['n_selected']]) / x['n_selected']
+        )
+      }
+    )
+  
+  ratio_data <- data.frame()
+  for (df in df_metr1){
+    ratio_data <- rbind(ratio_data, df)
+  }
+  rownames(ratio_data) <- NULL
+  ratio_data$n_test_pos <- test_pos
+  ratio_data$lift_recall <- ratio_data$recall / ratio_data$quantile
+  ratio_data$f1 <- ratio_data$recall * ratio_data$precision * 2 / (ratio_data$recall + ratio_data$precision)
+  ratio_data$f1[is.na(ratio_data$f1)] <- 0
   
   results <- list()
   results[['roc_auc']] <- out_df
@@ -175,4 +202,45 @@ get_model_quality <- function(train_pred, test_pred, model){
   results[['recall']] <- ratio_data
   
   return(results)
+}
+
+get_sample_size <- function(n_pos, n_neg){
+  
+  bal <- n_pos / n_neg
+  if (bal < 0.2){
+    # if balance < 20% then make it to be equal 20% by taking all positives 
+    # and sampling negatives
+    bal_vect <- c(X0 = floor(n_pos * 5), X1 = n_pos)
+  } else if (bal > 1){
+    # if there are more (target) positive examples than negative examples
+    # then make balance equal to perfect 1 (same number of positives and negatives)
+    bal_vect <- c(X0 = n_neg, X1 = n_neg)
+  } else {
+    # if balance is between 0.2 and 1 then consider it as a rather natural balance and 
+    # take it as is
+    bal_vect <- c(X0 = n_neg, X1 = n_pos)
+  }
+  return(bal_vect)
+}
+
+
+
+rf_fit <- function(x_train, y_train, trCtrl, n_pos, n_neg, mtryGrid){
+  
+  model <- train(
+    x = x_train, 
+    y = y_train,
+    preProcess = c("zv", "YeoJohnson", "center", "scale"),
+    method = "rf",
+    metric="ROC",   
+    maximize = TRUE,
+    trControl = trCtrl,
+    ntree = 500,
+    nodesize = 30,
+    maxnodes = 3,
+    sampsize = get_sample_size(n_pos = n_pos, n_neg = n_neg),
+    tuneGrid = mtryGrid
+  )
+  
+  return(model)
 }

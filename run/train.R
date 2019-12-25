@@ -15,13 +15,13 @@ library(pROC)
 source("run/features.R")
 source("run/tools.R")
 
-n_cores <- 1
+n_cores <- 3
 registerDoParallel(n_cores)
 
 set.seed(7)
 
 
-win_len <- 10000
+win_len <- 100000
 win_len_upper <- win_len * 10
 
 # load data
@@ -186,6 +186,11 @@ df_roc_auc_all <- data.frame()
 df_imp_all <- data.frame()
 df_recall_all <- data.frame()
 
+# select quantiles for quality assessment
+breakpoints_balance <- data.frame(t(apply(all_data[grep(x = hsp_cols, pattern = "all", value = T)], 2, table)))
+breakpoints_balance$ratio <- breakpoints_balance$X1/ (breakpoints_balance$X0 + breakpoints_balance$X1)
+recall_quantiles <- c(0.001, 0.005, 0.002,  0.003, 0.015, 0.025, seq(0.01, 0.05, 0.01), seq(0.1, 0.9, 0.05))
+
 # set progress bar
 n_iterations <- length(hsp_cols)
 pb <- progress_bar$new(
@@ -198,7 +203,8 @@ for (target_column in hsp_cols){
   cancer_type <- strsplit(target_column, "_")[[1]][3]
   agg_level <- strsplit(target_column, "_")[[1]][2]
   
-  all_features_cols <- c(all_conserved_feats, grep(x = all_tissue_spec_feats, pattern = cancer_type, value = TRUE))
+  all_features_cols <- c(all_conserved_feats, grep(x = all_tissue_spec_feats, 
+                                                   pattern = cancer_type, value = TRUE))
   
   # define features list for iterative model evaluation
   feat_groups <- list()
@@ -226,17 +232,20 @@ for (target_column in hsp_cols){
   repeats_res <- foreach(i=seq(1, n_repeats)) %dopar% {
 
     # train/test split
-    splitted_dataset <- get_train_test_split(data=all_data, target_col=target_column, start_pos_col="from", chr_col="chr", 
-                         feature_cols=all_features_cols, train_ratio=train_ratio, seed=i)
+    splitted_dataset <- get_train_test_split(data=all_data, target_col=target_column, 
+                                             start_pos_col="from", chr_col="chr", 
+                                             feature_cols=all_features_cols, train_ratio=train_ratio, 
+                                             seed=i)
     x_train <- splitted_dataset[["x_train"]]
     y_train <- splitted_dataset[["y_train"]]
     x_test <- splitted_dataset[["x_test"]] 
     y_test <- splitted_dataset[["y_test"]]  
     
     # limit outliers
-    data_tr <- limit_outliers(x_train = x_train, x_test = x_test, features = all_features_cols, iqr_multiplicator = 3)
-    x_train <- data_tr[['train']]
-    x_test <- data_tr[['test']]
+    # data_tr <- limit_outliers(x_train = x_train, x_test = x_test, 
+    #                           features = all_features_cols, iqr_multiplicator = 3)
+    # x_train <- data_tr[['train']]
+    # x_test <- data_tr[['test']]
     
     
     feat_iter_res <- list()
@@ -247,22 +256,13 @@ for (target_column in hsp_cols){
       features_nm <- feat_groups[[features_gr]]
       
       n_pos <- length(y_train[y_train == "X1"])
+      n_neg <- length(y_train[y_train == "X0"])
+      
+      
       
       # fit models
-      model <- train(
-        x = x_train[features_nm], 
-        y = y_train,
-        preProcess = c("zv", "YeoJohnson", "center", "scale"),
-        method = "rf",
-        metric="ROC",   
-        maximize = TRUE,
-        trControl = trCtrl,
-        ntree = 1000,
-        nodesize = 70,
-        maxnodes = 10,
-        sampsize = c(X0 = floor(length(n_pos) * 5), X1 = n_pos),
-        tuneGrid = mtryGrid
-      )
+      model <- rf_fit(x_train = x_train[features_nm], y_train = y_train, trCtrl = trCtrl,
+             n_pos = n_pos, n_neg = n_neg, mtryGrid = mtryGrid)
       
       # prediction
       train_pred <- predict(model, newdata = x_train[features_nm], type = "prob")
@@ -271,7 +271,7 @@ for (target_column in hsp_cols){
       test_pred$target <- y_test
       
       # model quality
-      model_qual <- get_model_quality(train_pred, test_pred, model)
+      model_qual <- get_model_quality(train_pred, test_pred, model, recall_quantiles)
       model_qual[['features_group']] <- features_gr
       
       feat_iter_res[[j]] <- model_qual  

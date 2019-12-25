@@ -1,0 +1,131 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(dplyr)
+library(reshape2)
+
+library(ggplot2)
+library(wesanderson)
+library(ggsci)
+
+library(formattable)
+
+all_results <- read.csv(file = "../data/output/feature_engineering.csv")
+all_results$diff_auc <- all_results$tr_auc - all_results$te_auc
+
+```
+
+### Analysis of addition of new features to base features
+
+Distribution of test ROC AUC difference with base model
+```{r}
+all_results_reshaped <- dcast(data = all_results, formula = iter + cancer_type ~ features_group, value.var = "te_auc")
+
+for (col in c( "base_with_binary_flags" , "base_with_higher_level_feats", "base_with_maximums")){
+  all_results_reshaped <- all_results_reshaped %>%
+    mutate(!!as.name(paste0(col, "_diff")) := !!as.name(col) - base)
+}
+all_results_reshaped_plot <- melt(data = all_results_reshaped, id.vars = c("cancer_type", "iter"), 
+                                  measure.vars = c( "base_with_binary_flags_diff" , "base_with_higher_level_feats_diff", "base_with_maximums_diff"))
+                                  
+ggplot(all_results_reshaped_plot, aes(value, fill=variable)) +
+  geom_density(alpha = 0.5) +
+  facet_wrap(~cancer_type)+
+  geom_vline(xintercept = 0) + 
+  scale_fill_jco() + 
+  theme(legend.position="bottom")
+```
+
+Mean difference
+
+```{r}
+mean_diff <- all_results_reshaped %>%
+  group_by(cancer_type) %>%
+  summarize(
+    mean_diff_binary_flags = mean(base_with_binary_flags_diff),
+    mean_diff_higher_lev = mean(base_with_higher_level_feats_diff),
+    mean_diff_max = mean(base_with_maximums_diff)
+  )
+
+mean_diff <- mean_diff %>%
+  mutate(
+    mean_diff_binary_flags = round(mean_diff_binary_flags, 4),
+    mean_diff_higher_lev = round(mean_diff_higher_lev, 4),
+    mean_diff_max = round(mean_diff_max, 4)
+  )
+
+formattable(
+  mean_diff, 
+  align =c("l","c","c","c"), 
+  list(
+    `cancer_type` = formatter("span", style = ~ style(color = "grey", font.weight = "bold")),
+    `mean_diff_binary_flags` = formatter(
+      "span", 
+      style = ~ style(color = ifelse(`mean_diff_binary_flags` < 0, "lightblue", "orange")), 
+      ~ icontext(sapply(`mean_diff_binary_flags`, function(x) if (x < 0) "arrow-down" else if (x > 0) "arrow-up" else ""), `mean_diff_binary_flags`)),
+    `mean_diff_higher_lev` = formatter(
+      "span", 
+      style = ~ style(color = ifelse(`mean_diff_higher_lev` < 0, "lightblue", "orange")), 
+      ~ icontext(sapply(`mean_diff_higher_lev`, function(x) if (x < 0) "arrow-down" else if (x > 0) "arrow-up" else ""), `mean_diff_higher_lev`)),
+    `mean_diff_max` = formatter(
+      "span", 
+      style = ~ style(color = ifelse(`mean_diff_max` < 0, "lightblue", "orange")), 
+      ~ icontext(sapply(`mean_diff_max`, function(x) if (x < 0) "arrow-down" else if (x > 0) "arrow-up" else ""), `mean_diff_max`))
+  )
+  )
+
+```
+
+### Analysis of performance of binary predictors only
+
+```{r}
+all_results <- read.csv("../data/output/feature_engineering_only_binary.csv")
+all_results$diff_auc <- all_results$tr_auc - all_results$te_auc
+```
+
+Distribution of test ROC AUC difference with model on base features
+
+```{r}
+all_results_reshaped <- dcast(data = all_results, formula = iter + cancer_type ~ features_group, value.var = "te_auc")
+
+for (col in c( "binary_flags" , "binary_with_maximums")){
+  all_results_reshaped <- all_results_reshaped %>%
+    mutate(!!as.name(paste0(col, "_diff")) := !!as.name(col) - base)
+}
+all_results_reshaped_plot <- melt(data = all_results_reshaped, id.vars = c("cancer_type", "iter"), 
+                                  measure.vars = c( "binary_with_maximums_diff", "binary_flags_diff"))
+
+ggplot(all_results_reshaped_plot, aes(value, fill=variable)) +
+  geom_density(alpha = 0.5) +
+  facet_wrap(~cancer_type)+
+  geom_vline(xintercept = 0) + 
+  scale_fill_jco() + 
+  theme(legend.position="bottom")
+```
+
+Mean difference
+
+```{r}
+mean_diff <- all_results_reshaped %>%
+  group_by(cancer_type) %>%
+  summarize(
+    mean(binary_with_maximums_diff),
+    mean(binary_flags_diff)
+  )
+mean_diff
+```
+
+Mean test ROC AUC by cancer type and feature sets
+
+```{r}
+all_results_reshaped %>%
+  group_by(cancer_type) %>%
+  summarize(
+    median_base = median(base),
+    median_binary_flags = median(binary_flags),
+    median_binary_with_max = median(binary_with_maximums)
+    )
+```

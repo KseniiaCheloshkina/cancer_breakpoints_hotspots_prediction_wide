@@ -1,0 +1,197 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(dplyr)
+library(reshape2)
+library(openxlsx)
+library(ggplot2)
+
+# load boruta best features 
+best_features <- read.xlsx("../data/output/boruta_stats.xlsx", sheet = "hotspots_features")
+best_features <- best_features[best_features$boruta_selected == 1, 
+                               c("cancer_type", "feature")]
+
+```
+
+### Pancreatic cancer
+
+Old top features
+
+```{r}
+best_features %>% filter(cancer_type == "pancreatic")
+```
+
+Find additional best features
+
+```{r}
+df_recall_all <- read.csv("../data/output/pancreatic_fs/result_recall_100000.csv")
+
+med_lifts <- df_recall_all %>%
+  filter(quantile == 0.05) %>%
+  group_by(feat_added) %>%
+  summarize(
+    med_lift_recall = median(lift_recall)
+  ) %>%
+  arrange(desc(med_lift_recall)) 
+
+med_lifts %>%
+  head()
+
+```
+
+Вывод: не хватает в топ фичи остальных региональных признаков! При этом upper фичи важнее, чем на томже уровне.
+
+```{r fig.height=7}
+ggplot(df_recall_all %>% filter(quantile == 0.05), aes(x=reorder(feat_added, lift_recall, median), y=lift_recall)) + 
+  geom_boxplot() + 
+  coord_flip()
+```
+
+
+### Breast cancer
+
+Old top features
+
+```{r}
+best_features %>% filter(cancer_type == "breast")
+```
+
+Find additional best features
+
+```{r}
+df_recall_all <- read.csv("../data/output/breast_fs/result_recall_100000.csv")
+
+med_lifts <- df_recall_all %>%
+  filter(quantile == 0.05) %>%
+  group_by(feat_added) %>%
+  summarize(
+    med_lift_recall = median(lift_recall)
+  ) %>%
+  arrange(desc(med_lift_recall)) 
+
+med_lifts %>%
+  head()
+
+```
+
+Вывод: не хватает еще транскрипционных факторов.
+
+```{r fig.height=7}
+ggplot(df_recall_all %>% filter(quantile == 0.05), aes(x=reorder(feat_added, lift_recall, median), y=lift_recall)) + 
+  geom_boxplot() + 
+  coord_flip()
+```
+
+
+### Prostate cancer
+
+Old top features
+
+```{r}
+best_features %>% filter(cancer_type == "prostate")
+```
+
+Find additional best features
+
+```{r}
+df_recall_all <- read.csv("../data/output/prostate_fs/result_recall_100000.csv")
+
+med_lifts <- df_recall_all %>%
+  filter(quantile == 0.05) %>%
+  group_by(feat_added) %>%
+  summarize(
+    med_lift_recall = median(lift_recall)
+  ) %>%
+  arrange(desc(med_lift_recall)) 
+
+med_lifts %>%
+  head()
+
+```
+
+Вывод: не хватает еще транскрипционных факторов.
+
+```{r fig.height=7}
+ggplot(df_recall_all %>% filter(quantile == 0.05), aes(x=reorder(feat_added, lift_recall, median), y=lift_recall)) + 
+  geom_boxplot() + 
+  coord_flip()
+```
+
+```{r final features}
+feat_to_add <- rbind(
+  data.frame(
+    cancer_type = "pancreatic",
+    feature = c("upper_introns", "upper_WholeGenes")
+    ),
+  data.frame(
+    cancer_type = "breast",
+    feature = c("cancer_liver_FOXA2.human", "cancer_liver_ZBTB33.human")
+    ),  
+  data.frame(
+    cancer_type = "prostate",
+    feature = c("cancer_liver_YY1.human")
+    )
+)
+
+```
+
+
+Feature correlation
+
+```{r fig.width=10}
+features_cols_base <- as.character(feat_to_add$feature)
+features_cols <- gsub(x = features_cols_base, pattern = "upper_",replacement = "")
+
+# load data
+win_len <- 100000
+win_len_upper <- win_len * 10
+data_path <- "../data/datasets/" 
+data <- read.csv(
+  paste0(data_path, "dataset_", format(win_len, scientific = FALSE), ".csv")
+)
+source("features.R")
+all_data <- get_higher_level_features(data=data, features_cols = features_cols, 
+                                           win_len_upper = win_len_upper,
+                                           path_to_upper_data = paste0(data_path, "dataset_",
+                                                                       format(win_len_upper, scientific = FALSE), ".csv"))
+corrm <- cor(all_data[features_cols_base], method="spearman")
+corrm_m <- melt(corrm)
+
+corrm_m %>%
+  filter(Var1 != Var2) %>%
+  arrange(desc(value)) %>%
+  head(15)
+```
+
+"upper_WholeGenes" and	"upper_introns" are highly correlated, take only one feature.
+
+
+
+
+```{r save final features}
+feat_to_add <- rbind(
+  data.frame(
+    cancer_type = "pancreatic",
+    feature = c("upper_WholeGenes")
+    ),
+  data.frame(
+    cancer_type = "breast",
+    feature = c("cancer_liver_FOXA2.human", "cancer_liver_ZBTB33.human")
+    ),  
+  data.frame(
+    cancer_type = "prostate",
+    feature = c("cancer_liver_YY1.human")
+    )
+)
+
+final_feats <- rbind(best_features, feat_to_add)
+
+wb <- createWorkbook()
+addWorksheet(wb, "hotspots_features")
+writeData(wb, sheet="hotspots_features", final_feats)
+saveWorkbook(wb, "../data/output/boruta_plus_sign_stats.xlsx", overwrite = T)
+
+```

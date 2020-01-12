@@ -23,7 +23,7 @@ win_len <- 100000
 ### get final results data
 
 # for almost all cancer types
-main_res_path <- "../data/output/classifier_results_best_features_50/"
+main_res_path <- "../data/output/classifier_results_best_features/"
 roc_auc_data <- read.csv(paste0(main_res_path, "result_roc_auc_100000.csv"), row.names = 1, stringsAsFactors = F)
 recall_data <- read.csv(paste0(main_res_path, "result_recall_100000.csv"), row.names = 1, stringsAsFactors = F)
 roc_auc_data_main <- roc_auc_data[!roc_auc_data$cancer_type %in% c("breast", "pancreatic", "prostate"), ]
@@ -69,6 +69,11 @@ recall_data_full <- rbind(
 roc_auc_data_full[roc_auc_data_full$agg_level == "99", "agg_level"] <- "99."
 recall_data_full[recall_data_full$agg_level == "99", "agg_level"] <- "99."
 
+# write full results
+# path_to_full_data <- "../data/output/classifier_results_best_features_boruta_sign/full_results/"
+# write.csv(roc_auc_data_full, file=paste0(path_to_full_data, "result_roc_auc_100000.csv"))
+# write.csv(recall_data_full, file=paste0(path_to_full_data, "result_recall_100000.csv"))
+
 ### get results
 # roc auc
 roc_data <- roc_auc_data_full %>%
@@ -81,8 +86,14 @@ roc_data <- roc_auc_data_full %>%
     sd_test_auc = sd(te_auc),
     median_test_auc = median(te_auc),
     mean_test_auc = mean(te_auc),
-    train_test_diff = mean(train_test_diff)
-  )
+    train_test_diff = mean(train_test_diff),
+    n_ex = n()
+  ) %>%
+  mutate(
+    ci_lower_roc_auc = mean_test_auc - 1.96 * sd_test_auc / sqrt(n_ex),
+    ci_upper_roc_auc = mean_test_auc + 1.96 * sd_test_auc / sqrt(n_ex)
+  ) %>%
+  select(-n_ex)
 
 # recall
 map_df <- data.frame(agg_level=c("99.", "99.5.", "99.9."), agg_level_num = c(0.01, 0.005, 0.001))
@@ -103,20 +114,29 @@ recall_stats <- recall_data_full %>%
     sd_precision = sd(precision),
     sd_lift_precision = sd(lift_precision),
     n_ex = n()
-  ) %>% 
+  )  %>%
+  mutate(
+    ci_lower_lift_recall = mean_lift_recall - 1.96 * sd_lift_recall / sqrt(n_ex),
+    ci_upper_lift_recall = mean_lift_recall + 1.96 * sd_lift_recall / sqrt(n_ex),
+
+    ci_lower_lift_precision = mean_lift_precision - 1.96 * sd_lift_precision / sqrt(n_ex),
+    ci_upper_lift_precision = mean_lift_precision + 1.96 * sd_lift_precision / sqrt(n_ex),
+  ) %>%
   filter(quantile %in% c(0.001, 0.005, 0.01,0.02,0.03, 0.040, 0.050, 0.100)) %>%
-  select(cancer_type, agg_level, quantile, mean_recall, mean_lift_recall, mean_precision, mean_lift_precision)
+  select(cancer_type, agg_level, quantile, mean_recall, mean_lift_recall,ci_lower_lift_recall,
+         ci_upper_lift_recall, mean_precision, mean_lift_precision, ci_lower_lift_precision,
+         ci_upper_lift_precision)
 
 
 # save
-wb <- createWorkbook()
-addWorksheet(wb, "ROC_AUC_hotspots")
-addWorksheet(wb, "Recall_hotspots")
-
-writeData(wb, sheet="ROC_AUC_hotspots", roc_data)
-writeData(wb, sheet="Recall_hotspots", recall_stats)
-
-saveWorkbook(wb, "../reports/train_best_features_boruta_sign.xlsx", overwrite = T)
+# wb <- createWorkbook()
+# addWorksheet(wb, "ROC_AUC_hotspots")
+# addWorksheet(wb, "Recall_hotspots")
+# 
+# writeData(wb, sheet="ROC_AUC_hotspots", roc_data)
+# writeData(wb, sheet="Recall_hotspots", recall_stats)
+# 
+# saveWorkbook(wb, "../reports/train_best_features_boruta_sign.xlsx", overwrite = T)
 ```
 
 ## Comparison of quality for full and reduced model
@@ -151,7 +171,7 @@ recall_stats_comp <- rbind.data.frame(
 roc_data_comp_m <- melt(roc_data_comp, id.vars = c("cancer_type", "agg_level", "type"))
 
 ggplot(roc_data_comp_m, aes(x=cancer_type, y=value, fill=type)) + 
-  geom_bar(stat="identity", position = "dodge") + 
+  geom_bar(stat="identity", color="black", position = "dodge") + 
   facet_wrap(~variable, nrow = 5, scales = "free_y") + 
   scale_fill_jco()
 ```
@@ -180,7 +200,7 @@ ggplot(recall_stats_comp_m, aes(x=quantile, y=value, color=var_new)) +
 
 ```{r fig.height=10}
 ggplot(recall_stats_comp_m, aes(x=quantile_chr, y=value, fill=var_new)) + 
-  geom_bar(stat="identity", position = "dodge") + 
+  geom_bar(stat="identity",color="black", position = "dodge") + 
   facet_wrap(~cancer_type, nrow = 10, scales = "free_y") + 
   scale_fill_jco()
 ```
@@ -194,7 +214,7 @@ ggplot(recall_stats_comp_m, aes(x=quantile_chr, y=value, fill=var_new)) +
 
 ```{r fig.width=10}
 ggplot(recall_stats_comp_m %>% filter(quantile == 0.03), aes(x=cancer_type, y=value, fill=var_new)) + 
-  geom_bar(stat="identity", position = "dodge") + 
+  geom_bar(stat="identity", color="black", position = "dodge") + 
   scale_fill_jco()
 ```
 
@@ -203,7 +223,7 @@ ggplot(recall_stats_comp_m %>% filter(quantile == 0.03), aes(x=cancer_type, y=va
 
 ```{r fig.width=10}
 ggplot(recall_stats_comp_m %>% filter(quantile == 0.05), aes(x=cancer_type, y=value, fill=var_new)) + 
-  geom_bar(stat="identity", position = "dodge") + 
+  geom_bar(stat="identity", color="black",position = "dodge") + 
   scale_fill_jco()
 ```
 

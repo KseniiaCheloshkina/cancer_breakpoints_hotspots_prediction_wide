@@ -142,7 +142,8 @@ for (target_column in hsp_cols){
   
   if (is_best == 1){
     
-    all_features_cols <- c(all_conserved_feats, grep(x = all_tissue_spec_feats, pattern = cancer_type, value = TRUE))
+    all_features_cols <- c(all_conserved_feats, grep(x = all_tissue_spec_feats,
+                                                     pattern = cancer_type, value = TRUE))
     
     # select best features
     features_nm <- best_features[(best_features$cancer_type == cancer_type), "feature"]
@@ -167,19 +168,16 @@ for (target_column in hsp_cols){
     repeats_res <- foreach(i=seq(1, n_repeats)) %dopar% {
   
       # train/test split
-      splitted_dataset <- get_train_test_split(data=all_data, target_col=target_column, start_pos_col="from",
-                                               chr_col="chr", feature_cols=features_nm, train_ratio=train_ratio, 
+      splitted_dataset <- get_train_test_split(data=all_data, target_col=target_column, 
+                                               start_pos_col="from",
+                                               chr_col="chr", feature_cols=features_nm,
+                                               train_ratio=train_ratio, 
                                                seed=i)
       x_train <- splitted_dataset[["x_train"]]
       y_train <- splitted_dataset[["y_train"]]
       x_test <- splitted_dataset[["x_test"]] 
       y_test <- splitted_dataset[["y_test"]]  
       
-      # limit outliers
-      # data_tr <- limit_outliers(x_train = x_train, x_test = x_test, features = features_nm, iqr_multiplicator = 3)
-      # x_train <- data_tr[['train']]
-      # x_test <- data_tr[['test']]
-        
       n_pos <- length(y_train[y_train == "X1"])
       n_neg <- length(y_train[y_train == "X0"])
 

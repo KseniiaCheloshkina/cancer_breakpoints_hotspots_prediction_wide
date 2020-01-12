@@ -151,7 +151,7 @@ df_stats$max_iter <- as.character(df_stats$max_iter)
 df_stats$iter <- as.character(df_stats$iter)
 
 ggplot(df_stats, aes(x=max_iter, fill=iter, y=mean_n_selected)) + 
-  geom_bar(stat="identity", position = "dodge")  + 
+  geom_bar(stat="identity", color="black", position = "dodge")  + 
   scale_fill_jco()
 ```
 
@@ -290,7 +290,7 @@ df_hits_last_iter_agg_new <- df_hits_last_iter %>%
     )
 
 ggplot(df_hits_last_iter_agg_new, aes(x=cancer_type, y=n_best, fill=feature_group))+
-  geom_bar(stat="identity", position="dodge") + 
+  geom_bar(stat="identity", color="black", position="dodge") + 
   scale_fill_jco()
 ```
 
@@ -341,7 +341,7 @@ by_f
 
 ```{r fig.width=10, fig.height=12}
 ggplot(by_f, aes(x=reorder(feature, total_sets, median), y=total_sets, fill=feature_group))+
-  geom_bar(stat="identity") + 
+  geom_bar(stat="identity",color="black") + 
   coord_flip() + 
   scale_fill_jco()
 ```
@@ -357,6 +357,7 @@ ggplot(df_hits_last_iter_agg, aes(n_best)) +
 Видно, что 50 - для многих типов рака переходная граница между большим количеством фичей около 0 и небольшим количеством важных фичей. Выберем эти число как порог для выбора фичей.  
 
 ```{r}
+thr <- 50
 df_hits_last_iter_agg %>%
   filter(n_best > 50) %>%
   group_by(cancer_type) %>%
@@ -366,45 +367,8 @@ df_hits_last_iter_agg %>%
   arrange(n_features)
 ```
 
-
-```{r}
-thr <- df_hits_last_iter_agg %>%
-  group_by(cancer_type) %>%
-  summarize(
-    thr = quantile(n_best, .85)
-  )
-df_hits_last_iter_agg %>%
-  inner_join(thr, by=c("cancer_type")) %>%
-  filter(n_best > thr) %>%
-  group_by(cancer_type) %>%
-  summarize(
-    n_features = n()
-  ) %>%
-  arrange(n_features)  
-```
-
-```{r}
-thr <- df_hits_last_iter_agg %>%
-  group_by(cancer_type) %>%
-  summarize(
-    thr = quantile(n_best, .8)
-  )
-df_hits_last_iter_agg %>%
-  inner_join(thr, by=c("cancer_type")) %>%
-  filter(n_best > thr) %>%
-  group_by(cancer_type) %>%
-  summarize(
-    n_features = n()
-  ) %>%
-  arrange(n_features)  
-```
-
-
-Всего 46 из 130 фичей
-
 ```{r}
 res_hsp <- df_hits_last_iter_agg %>%
-  inner_join(thr, by=c("cancer_type")) %>%
   mutate(boruta_selected = ifelse(n_best > thr, 1, 0)) %>%
   select(-thr)
 
@@ -416,6 +380,8 @@ res_hsp %>%
   nrow()
 ```
 
+Всего 46 из 130 фичей
+
 ```{r fig.width=10}
 cn_for_feat <- res_hsp %>% 
   filter(boruta_selected == 1) %>%
@@ -424,7 +390,7 @@ cn_for_feat <- res_hsp %>%
   arrange(desc(n_cancer_types))
 
 ggplot(cn_for_feat, aes(x=reorder(feature, n_cancer_types, mean) , y=n_cancer_types,fill=feature_group))+
-  geom_bar(stat="identity", position="dodge") + 
+  geom_bar(stat="identity",color="black",  position="dodge") + 
   coord_flip() + 
   scale_fill_jco()
 ```
@@ -439,11 +405,11 @@ ggplot(res_hsp %>% filter(boruta_selected == 1), aes(x=cancer_type, y=feature,fi
 
 
 
-```{r}
-wb <- createWorkbook()
-addWorksheet(wb, "hotspots_features")
-writeData(wb, sheet="hotspots_features", res_hsp)
-saveWorkbook(wb, "../data/output/boruta_stats_0.8.xlsx", overwrite = T)
+```{r save}
+# wb <- createWorkbook()
+# addWorksheet(wb, "hotspots_features")
+# writeData(wb, sheet="hotspots_features", res_hsp)
+# saveWorkbook(wb, "../data/output/boruta_stats.xlsx", overwrite = T)
 ```
 
 Feature correlation

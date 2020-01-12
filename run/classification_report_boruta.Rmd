@@ -17,16 +17,12 @@ library(dplyr)
 library(reshape2)
 
 library(formattable)
-library(webshot)
 
 library(openxlsx)
 
-customGreen0 = "#DeF7E9"
-customGreen = "#71CA97"
 
 win_len <- 100000
-
-data_path <- "../data/output/classifier_results_best_features_0.8/"
+data_path <- "../data/output/classifier_results_best_features/"
 roc_auc_data <- read.csv(paste0(data_path, "result_roc_auc_100000.csv"), row.names = 1, stringsAsFactors = F)
 recall_data <- read.csv(paste0(data_path, "result_recall_100000.csv"), row.names = 1, stringsAsFactors = F)
 imp_data <- read.csv(paste0(data_path, "result_imp_100000.csv"), row.names = 1, stringsAsFactors = F)
@@ -154,17 +150,17 @@ ci_stats <- all_features_data %>%
     n_ex = n()
   ) %>%
   mutate(
-    ci_lower_recall = mean_recall - 1.96 * sd_recall / n_ex,
-    ci_upper_recall = mean_recall + 1.96 * sd_recall / n_ex,
+    ci_lower_recall = mean_recall - 1.96 * sd_recall / sqrt(n_ex),
+    ci_upper_recall = mean_recall + 1.96 * sd_recall / sqrt(n_ex),
     
-    ci_lower_lift_recall = mean_lift_recall - 1.96 * sd_lift_recall / n_ex,
-    ci_upper_lift_recall = mean_lift_recall + 1.96 * sd_lift_recall / n_ex,    
+    ci_lower_lift_recall = mean_lift_recall - 1.96 * sd_lift_recall / sqrt(n_ex),
+    ci_upper_lift_recall = mean_lift_recall + 1.96 * sd_lift_recall / sqrt(n_ex),    
     
-    ci_lower_precision = mean_precision - 1.96 * sd_precision / n_ex,
-    ci_upper_precision = mean_precision + 1.96 * sd_precision / n_ex,       
+    ci_lower_precision = mean_precision - 1.96 * sd_precision / sqrt(n_ex),
+    ci_upper_precision = mean_precision + 1.96 * sd_precision / sqrt(n_ex),       
     
-    ci_lower_lift_precision = mean_lift_precision - 1.96 * sd_lift_precision / n_ex,
-    ci_upper_lift_precision = mean_lift_precision + 1.96 * sd_lift_precision / n_ex
+    ci_lower_lift_precision = mean_lift_precision - 1.96 * sd_lift_precision / sqrt(n_ex),
+    ci_upper_lift_precision = mean_lift_precision + 1.96 * sd_lift_precision / sqrt(n_ex)
   )
 
 ```
@@ -182,24 +178,30 @@ roc_data <- roc_auc_data %>%
     sd_test_auc = sd(te_auc),
     median_test_auc = median(te_auc),
     mean_test_auc = mean(te_auc),
-    train_test_diff = mean(train_test_diff)
-  )
+    train_test_diff = mean(train_test_diff),
+    n_ex = n()
+  ) %>%
+  mutate(
+    ci_lower_roc_auc = mean_test_auc - 1.96 * sd_test_auc / sqrt(n_ex),
+    ci_upper_roc_auc = mean_test_auc + 1.96 * sd_test_auc / sqrt(n_ex), 
+  ) %>%
+  select(-n_ex)
 
 # recall
 recall_stats_hsp <- ci_stats %>% 
   filter(quantile %in% c(0.001, 0.005, 0.01,0.02,0.03, 0.040, 0.050, 0.100)) %>%
-  select(cancer_type, agg_level, quantile, mean_recall, mean_lift_recall, mean_precision, mean_lift_precision)
+  select(cancer_type, agg_level, quantile, mean_recall, mean_lift_recall, mean_precision, mean_lift_precision, ci_lower_lift_recall, ci_upper_lift_recall, ci_lower_lift_precision,ci_upper_lift_precision)
 
 
 # save
-wb <- createWorkbook()
-addWorksheet(wb, "ROC_AUC_hotspots")
-addWorksheet(wb, "Recall_hotspots")
-
-writeData(wb, sheet="ROC_AUC_hotspots", roc_data)
-writeData(wb, sheet="Recall_hotspots", recall_stats_hsp)
-
-saveWorkbook(wb, "../reports/train_best_features_0.8.xlsx", overwrite = T)
+# wb <- createWorkbook()
+# addWorksheet(wb, "ROC_AUC_hotspots")
+# addWorksheet(wb, "Recall_hotspots")
+# 
+# writeData(wb, sheet="ROC_AUC_hotspots", roc_data)
+# writeData(wb, sheet="Recall_hotspots", recall_stats_hsp)
+# 
+# saveWorkbook(wb, "../reports/train_best_features.xlsx", overwrite = T)
 ```
 
 Compare with results on all features
@@ -212,7 +214,7 @@ roc_data_base <- read.xlsx("../reports/train_baseline.xlsx", sheet = "ROC_AUC_ho
 recall_data_base <- read.xlsx("../reports/train_baseline.xlsx", sheet = "Recall_hotspots")
 
 
-roc_data_base %>% 
+roc_med <- roc_data_base %>% 
   select(cancer_type, agg_level, median_test_auc) %>%
   setNames(c("cancer_type", "agg_level", "median_test_auc_base")) %>%
   inner_join(
@@ -220,8 +222,19 @@ roc_data_base %>%
       select(cancer_type, agg_level, median_test_auc) %>%
       setNames(c("cancer_type", "agg_level", "median_test_auc_reduced")), by=c('cancer_type', 'agg_level'))
   
-  
+roc_med  
 ```
+
+
+
+```{r}
+roc_med_pl <- melt(roc_med,id.vars = c("cancer_type", "agg_level"))
+roc_med_pl$variable_new <- gsub(x = roc_med_pl$variable, pattern = "median_test_auc_", replacement = "")
+ggplot(roc_med_pl, aes(x=cancer_type, y=value, fill=variable_new)) + 
+  geom_bar(stat='identity',  color="black", position = "dodge") +
+  scale_fill_jco()
+```
+
 
 Train test diff ROC AUC
 
@@ -251,10 +264,14 @@ Comparison of quality of classifiers
 
 ```{r}
 recall_all <- recall_data_base %>%
+  select(cancer_type, agg_level, quantile, mean_recall,mean_lift_recall,
+             mean_precision, mean_lift_precision) %>%
   setNames(c("cancer_type", "agg_level", "quantile", "mean_recall_base","mean_lift_recall_base",
              "mean_precision_base", "mean_lift_precision_base")) %>%
   inner_join(
     recall_stats_hsp %>%
+      select(cancer_type, agg_level, quantile, mean_recall, mean_lift_recall,
+             mean_precision, mean_lift_precision) %>%
         setNames(c("cancer_type", "agg_level", "quantile", "mean_recall_reduced","mean_lift_recall_reduced",
              "mean_precision_reduced", "mean_lift_precision_reduced")),
     by=c('cancer_type', 'agg_level', 'quantile'))
@@ -275,7 +292,7 @@ comp_rec_pl[grep(x = comp_rec_pl$variable, pattern = "recall"), "variable_type"]
 comp_rec_pl[grep(x = comp_rec_pl$variable, pattern = "base"), "variable_new"] <- "base"
 comp_rec_pl[grep(x = comp_rec_pl$variable, pattern = "reduced"), "variable_new"] <- "reduced"
 ggplot(comp_rec_pl, aes(x=cancer_type, y=value, fill=variable_new)) + 
-  geom_bar(stat='identity', position = "dodge") +
+  geom_bar(stat='identity', color="black", position = "dodge") +
   facet_wrap(~variable_type,nrow = 2) + 
   scale_fill_jco()
 ```
@@ -294,7 +311,7 @@ comp_rec_pl[grep(x = comp_rec_pl$variable, pattern = "recall"), "variable_type"]
 comp_rec_pl[grep(x = comp_rec_pl$variable, pattern = "base"), "variable_new"] <- "base"
 comp_rec_pl[grep(x = comp_rec_pl$variable, pattern = "reduced"), "variable_new"] <- "reduced"
 ggplot(comp_rec_pl, aes(x=cancer_type, y=value, fill=variable_new)) + 
-  geom_bar(stat='identity', position = "dodge") +
+  geom_bar(stat='identity',  color="black", position = "dodge") +
   facet_wrap(~variable_type,nrow = 2) + 
   scale_fill_jco()
 ```
@@ -313,7 +330,7 @@ comp_rec_pl[grep(x = comp_rec_pl$variable, pattern = "recall"), "variable_type"]
 comp_rec_pl[grep(x = comp_rec_pl$variable, pattern = "base"), "variable_new"] <- "base"
 comp_rec_pl[grep(x = comp_rec_pl$variable, pattern = "reduced"), "variable_new"] <- "reduced"
 ggplot(comp_rec_pl, aes(x=cancer_type, y=value, fill=variable_new)) + 
-  geom_bar(stat='identity', position = "dodge") +
+  geom_bar(stat='identity',  color="black", position = "dodge") +
   facet_wrap(~variable_type,nrow = 2) + 
   scale_fill_jco()
 ```

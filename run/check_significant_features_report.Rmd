@@ -42,7 +42,7 @@ med_lifts %>%
 
 ```
 
-Вывод: не хватает в топ фичи остальных региональных признаков! При этом upper фичи важнее, чем на томже уровне.
+Вывод: не хватает в топ фичи остальных региональных признаков! При этом upper фичи важнее, чем на том же уровне.
 
 ```{r fig.height=7}
 ggplot(df_recall_all %>% filter(quantile == 0.05), aes(x=reorder(feat_added, lift_recall, median), y=lift_recall)) + 
@@ -168,9 +168,6 @@ corrm_m %>%
 
 "upper_WholeGenes" and	"upper_introns" are highly correlated, take only one feature.
 
-
-
-
 ```{r save final features}
 feat_to_add <- rbind(
   data.frame(
@@ -189,9 +186,9 @@ feat_to_add <- rbind(
 
 final_feats <- rbind(best_features, feat_to_add)
 
-wb <- createWorkbook()
-addWorksheet(wb, "hotspots_features")
-writeData(wb, sheet="hotspots_features", final_feats)
-saveWorkbook(wb, "../data/output/boruta_plus_sign_stats.xlsx", overwrite = T)
+# wb <- createWorkbook()
+# addWorksheet(wb, "hotspots_features")
+# writeData(wb, sheet="hotspots_features", final_feats)
+# saveWorkbook(wb, "../data/output/boruta_plus_sign_stats.xlsx", overwrite = T)
 
 ```

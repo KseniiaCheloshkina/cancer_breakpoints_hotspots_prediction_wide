@@ -21,9 +21,6 @@ library(webshot)
 
 library(openxlsx)
 
-customGreen0 = "#DeF7E9"
-customGreen = "#71CA97"
-
 win_len <- 100000
 
 data_path <- "../data/output/classifier_results/"
@@ -165,7 +162,6 @@ best_lev <- data.frame(
 
 
 ```{r}
-
 best_labeling <- all_features_data %>%
   inner_join(best_lev, by=c("cancer_type", "agg_level")) %>%
   group_by(cancer_type, agg_level) %>%
@@ -506,17 +502,17 @@ ci_stats <- all_features_data %>%
     n_ex = n()
   ) %>%
   mutate(
-    ci_lower_recall = mean_recall - 1.96 * sd_recall / n_ex,
-    ci_upper_recall = mean_recall + 1.96 * sd_recall / n_ex,
+    ci_lower_recall = mean_recall - 1.96 * sd_recall / sqrt(n_ex),
+    ci_upper_recall = mean_recall + 1.96 * sd_recall / sqrt(n_ex),
     
-    ci_lower_lift_recall = mean_lift_recall - 1.96 * sd_lift_recall / n_ex,
-    ci_upper_lift_recall = mean_lift_recall + 1.96 * sd_lift_recall / n_ex,    
+    ci_lower_lift_recall = mean_lift_recall - 1.96 * sd_lift_recall / sqrt(n_ex),
+    ci_upper_lift_recall = mean_lift_recall + 1.96 * sd_lift_recall / sqrt(n_ex),    
     
-    ci_lower_precision = mean_precision - 1.96 * sd_precision / n_ex,
-    ci_upper_precision = mean_precision + 1.96 * sd_precision / n_ex,       
+    ci_lower_precision = mean_precision - 1.96 * sd_precision / sqrt(n_ex),
+    ci_upper_precision = mean_precision + 1.96 * sd_precision / sqrt(n_ex),       
     
-    ci_lower_lift_precision = mean_lift_precision - 1.96 * sd_lift_precision / n_ex,
-    ci_upper_lift_precision = mean_lift_precision + 1.96 * sd_lift_precision / n_ex
+    ci_lower_lift_precision = mean_lift_precision - 1.96 * sd_lift_precision / sqrt(n_ex),
+    ci_upper_lift_precision = mean_lift_precision + 1.96 * sd_lift_precision / sqrt(n_ex)
   )
 
 ```
@@ -676,14 +672,19 @@ ci_stats_bkpt <- recall_all_agg %>%
     mean_lift_recall = mean(lift_recall),
     sd_recall = sd(recall),
     sd_lift_recall = sd(lift_recall),
+    mean_precision = mean(precision),
+    sd_precision = sd(precision),
     n_ex = n()
   ) %>%
   mutate(
-    ci_lower_recall = mean_recall - 1.96 * sd_recall / n_ex,
-    ci_upper_recall = mean_recall + 1.96 * sd_recall / n_ex,
+    ci_lower_recall = mean_recall - 1.96 * sd_recall / sqrt(n_ex),
+    ci_upper_recall = mean_recall + 1.96 * sd_recall / sqrt(n_ex),
     
-    ci_lower_lift_recall = mean_lift_recall - 1.96 * sd_lift_recall / n_ex,
-    ci_upper_lift_recall = mean_lift_recall + 1.96 * sd_lift_recall / n_ex
+    ci_lower_lift_recall = mean_lift_recall - 1.96 * sd_lift_recall / sqrt(n_ex),
+    ci_upper_lift_recall = mean_lift_recall + 1.96 * sd_lift_recall / sqrt(n_ex),
+    
+    ci_lower_precision = mean_precision - 1.96 * sd_precision / sqrt(n_ex),
+    ci_upper_precision = mean_precision + 1.96 * sd_precision / sqrt(n_ex)
   )
 
 ```
@@ -715,36 +716,7 @@ ggplot(ci_stats_bkpt %>% filter(quantile <= 0.1), aes(x=quantile, y=mean_recall,
 Предположение:
 Группа 3 показывает сравнительно более высокое качество, чем остальные, в то время как в целом качество предсказания разрывов намного хуже качества предсказания хотспотов. Возможно, убывающий характер lift of recall говорит о том, что для этих типов рака некоторая доля разрывов является ярко выраженной, а остальная часть также, как и для других типов рака, не выделяется из общей массы. Поэтому, возможно, большее количество размеченных хотспотов может больше соответствовать данным типам рака.
 
-Comparison of median lift of recall and median recall for 0.05 probability quantiles for task of hotspots prediction and breakpoints prediction
-
-```{r}
-agg_recall_all_agg <- recall_comp %>%
-  filter(quantile == 0.05) %>%
-  group_by(cancer_type, type) %>%
-  summarize(
-    med_recall = median(recall),
-    med_lift_recall = median(lift_recall)
-    )
-agg_recall_all_agg_1 <- agg_recall_all_agg %>%
-  filter(type == 'hotspots') %>%
-  select(cancer_type, med_recall, med_lift_recall) %>%
-  setNames(c("cancer_type", "med_recall_hsp", "med_lift_recall_hsp"))
-
-agg_recall_all_agg_2 <- agg_recall_all_agg %>%
-  filter(type == 'breakpoints') %>%
-  select(cancer_type, med_recall, med_lift_recall) %>%
-  setNames(c("cancer_type", "med_recall_bkpt", "med_lift_recall_bkpt"))
-
-comp_best_all <- agg_recall_all_agg_2 %>%
-  inner_join(agg_recall_all_agg_1, by=c("cancer_type"))
-
-comp_best_all %>%
-  select("cancer_type", "med_recall_hsp","med_recall_bkpt","med_lift_recall_hsp", "med_lift_recall_bkpt")
-
-```
-
-
-```{r save results}
+```{r echo=F}
 # roc auc
 roc_data <- roc_auc_data %>%
   filter(
@@ -759,18 +731,25 @@ roc_data <- roc_auc_data %>%
     sd_test_auc = sd(te_auc),
     median_test_auc = median(te_auc),
     mean_test_auc = mean(te_auc),
-    train_test_diff = mean(train_test_diff)
-  )
+    train_test_diff = mean(train_test_diff),
+    n_ex = n()
+  ) %>%
+  mutate(
+    ci_lower_roc_auc = mean_test_auc - 1.96 * sd_test_auc / sqrt(n_ex),
+    ci_upper_roc_auc = mean_test_auc + 1.96 * sd_test_auc / sqrt(n_ex), 
+  ) %>%
+  select(-n_ex)
 
 # recall
 recall_stats_hsp <- ci_stats %>% 
   filter(quantile %in% c(0.001, 0.005, 0.01,0.02,0.03, 0.040, 0.050, 0.100)) %>%
-  select(cancer_type, agg_level, quantile, mean_recall, mean_lift_recall, mean_precision, mean_lift_precision)
+  select(cancer_type, agg_level, quantile, mean_recall, mean_precision, mean_lift_recall, ci_lower_lift_recall, ci_upper_lift_recall, mean_lift_precision, ci_lower_lift_precision,ci_upper_lift_precision)
 
 recall_stats_bkpt <- ci_stats_bkpt %>% 
   ungroup() %>%
   filter(quantile %in% c(0.001, 0.005,0.01,0.02,0.03, 0.040, 0.050, 0.100)) %>%
-  select(cancer_type, quantile, mean_recall, mean_lift_recall)
+  select(cancer_type, quantile, mean_recall, mean_lift_recall, ci_lower_lift_recall, ci_upper_lift_recall,
+         mean_precision)
 
 # save
 wb <- createWorkbook()

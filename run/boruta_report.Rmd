@@ -7,7 +7,7 @@ output: html_notebook
 
 Load data
 
-```{r}
+```{r echo=F}
 library(dplyr)
 library(reshape2)
 
@@ -412,7 +412,120 @@ ggplot(res_hsp %>% filter(boruta_selected == 1), aes(x=cancer_type, y=feature,fi
 # saveWorkbook(wb, "../data/output/boruta_stats.xlsx", overwrite = T)
 ```
 
-Feature correlation
+
+### Cancer types clustering
+
+
+```{r fig.width=15}
+df_hits_last_iter_agg$feature_n <- gsub(df_hits_last_iter_agg$feature, pattern = "upper_", replacement = "")
+# specific preparation for tissue-specific features
+df_hits_last_iter_agg$feature_n[df_hits_last_iter_agg$feature_group == "histones"] <- unlist(
+  lapply(
+    strsplit(
+      x = df_hits_last_iter_agg$feature_n[df_hits_last_iter_agg$feature_group == "histones"],
+      split="_"), 
+    function(x) x[[3]])
+  )
+df_hits_last_iter_agg$feature_n[df_hits_last_iter_agg$feature_group == "chromatin"] <- "DNase_seq"
+
+
+# perform clustering for each feature group separately
+f_gr <- unique(df_hits_last_iter_agg$feature_group)
+f_gr <- f_gr[f_gr != "tad"]
+
+all_cl_res <- data.frame()
+
+for (feat_gr_nm  in f_gr){
+  data_part <- df_hits_last_iter_agg[df_hits_last_iter_agg$feature_group == feat_gr_nm,
+                                     c("cancer_type", "feature_n", "n_best")]
+  data_part_max <- data_part %>%
+    group_by(cancer_type, feature_n) %>%
+    filter(n_best == max(n_best)) %>%
+    mutate(
+      rn = row_number()
+    ) %>%
+    filter(rn == 1)
+  
+  data_part_max_casted <- dcast(data_part_max, cancer_type ~ feature_n, value.var = "n_best")
+  data_part_max_casted[is.na(data_part_max_casted)] <- 0
+  row.names(data_part_max_casted) <- data_part_max_casted$cancer_type
+  data_part_max_casted$cancer_type <- NULL
+  dist_m <- dist(data_part_max_casted, method = "euclidean")
+  hclustering <- hclust(dist_m, method = "ward.D")
+  # ordering <- row.names(data_part_max_casted)[hclustering$order]
+  # cl <- data.frame(
+  #   feature_group = feat_gr_nm,
+  #   cancer_type = ordering,
+  #   cluster_n = seq(1, length(ordering))
+  # )
+  cl <- data.frame(
+    feature_group = feat_gr_nm,
+    cancer_type = row.names(data_part_max_casted),
+    cluster_n = cutree(hclustering, k = 3)
+  )
+  all_cl_res <- rbind(all_cl_res, cl)
+}
+
+ggplot(all_cl_res, aes(x=feature_group, y=cluster_n, color=cancer_type, group=cancer_type)) + 
+  geom_point() + 
+  geom_line() +
+  coord_polar() +
+  theme(legend.position = "bottom") +
+  geom_ribbon(aes(ymin=0, ymax=cluster_n, fill=cancer_type, alpha=0.2)) + 
+  facet_wrap( ~ cancer_type, nrow=2, ncol=5) + 
+  scale_fill_jco() + 
+  scale_color_jco()
+
+```
+
+Нет идентичных типов рака, однако некоторые типы рака выглядят похоже, например:
+
+ - blood / pancreatic
+ - bone / brain
+ - ovary / prostate (!)
+ - breast / uterus (!)
+
+```{r}
+all_cl_raw <- dcast(all_cl_res, cancer_type ~ feature_group, value.var = "cluster_n")
+all_cl_raw
+```
+
+
+
+```{r echo=F}
+# FInal clustering - NOT STABLE
+# in_m <- as.matrix(all_cl_raw)
+# n <- nrow(all_cl_raw)
+# out_m <- matrix(nrow=n, ncol=n)
+# out_m
+# for (i in 1: (n-1)){
+#   for (j in (i + 1): n){
+#     x1  <- in_m[i, ]
+#     x2  <- in_m[j, ]
+#     d <- (x1 - x2)^2
+#     mean_d <- sum(d[!is.na(d)]) / length(d[!is.na(d)])
+#     out_m[i, j] <- out_m[j, i] <- mean_d     
+#   }
+#  
+# }
+# rownames(out_m) <- row.names(all_cl_raw)
+# colnames(out_m) <- row.names(all_cl_raw)
+# dist_m <- as.dist(out_m)
+# dist_m
+# # dist_m <- dist(all_cl_raw, method = "manhattan")
+# hclustering <- hclust(dist_m, method = "ward.D2")
+# ordering <- row.names(all_cl_raw)[hclustering$order]
+# final_cl <- data.frame(
+#   cancer_type = ordering,
+#   cluster_n = seq(1, length(ordering))
+# )
+# plot(hclustering$height)
+# plot(hclustering)
+# rect.hclust(hclustering, k=4)
+```
+
+
+### Feature correlation
 
 ```{r fig.width=10}
 best_features <- read.xlsx("../data/output/boruta_stats.xlsx", sheet = "hotspots_features")

@@ -1,0 +1,474 @@
+---
+title: "Classification report"
+output:
+  html_notebook: default
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+```{r "loading data", echo=F}
+library(ggplot2)
+library(ggsci)
+library(wesanderson)
+
+library(dplyr)
+library(reshape2)
+
+library(formattable)
+library(openxlsx)
+
+pal <- wes_palette("Zissou1", 100, type = "continuous")
+
+win_len <- 100000
+
+### get final results data
+
+main_res_path <- "../data/output/randomness/"
+roc_auc_data <- read.csv(paste0(main_res_path, "result_roc_auc_100000.csv"), row.names = 1, stringsAsFactors = F)
+recall_data <- read.csv(paste0(main_res_path, "result_recall_100000.csv"), row.names = 1, stringsAsFactors = F)
+roc_auc_data <- roc_auc_data[roc_auc_data$agg_level != "50.", ]
+recall_data <- recall_data[recall_data$agg_level != "50.", ]
+
+# label two experiments by type
+roc_auc_data$type <- "hsp_vs_bkpt"
+roc_auc_data[roc_auc_data$agg_level %in% c("50.", "75.", "90.", "95."), "type"] <- "bkpt_q"
+recall_data$type <- "hsp_vs_bkpt"
+recall_data[recall_data$agg_level %in% c("50.", "75.", "90.", "95."), "type"] <- "bkpt_q"
+
+
+
+### get stats
+# roc auc
+roc_data <- roc_auc_data %>%
+  mutate(
+    train_test_diff = tr_auc - te_auc
+  ) %>%
+  group_by(cancer_type, agg_level, type) %>%
+  summarize(
+    min_test_auc = min(te_auc),
+    sd_test_auc = sd(te_auc),
+    median_test_auc = median(te_auc),
+    mean_test_auc = mean(te_auc),
+    train_test_diff = mean(train_test_diff),
+    n_ex = n()
+  ) %>%
+  mutate(
+    ci_lower_roc_auc = mean_test_auc - 1.96 * sd_test_auc / sqrt(n_ex),
+    ci_upper_roc_auc = mean_test_auc + 1.96 * sd_test_auc / sqrt(n_ex)
+  ) %>%
+  select(-n_ex)
+
+# recall
+map_df <- data.frame(
+  agg_level=c("99.", "99.5.", "99.9.", "50.","75.","90.", "95."), 
+  agg_level_num = c(0.01, 0.005, 0.001, 0.5,0.25,0.1,0.05))
+
+recall_data <- recall_data %>%
+  inner_join(map_df)
+recall_data$lift_precision <- recall_data$precision / recall_data$agg_level_num
+
+
+recall_stats <- recall_data %>%
+  group_by(cancer_type, agg_level, type, quantile) %>%
+  summarize(
+    mean_recall = mean(recall),
+    mean_lift_recall = mean(lift_recall),
+    mean_precision = mean(precision),
+    mean_lift_precision = mean(lift_precision),
+    sd_recall = sd(recall),
+    sd_lift_recall = sd(lift_recall),
+    sd_precision = sd(precision),
+    sd_lift_precision = sd(lift_precision),
+    n_ex = n()
+  )  %>%
+  mutate(
+    ci_lower_lift_recall = mean_lift_recall - 1.96 * sd_lift_recall / sqrt(n_ex),
+    ci_upper_lift_recall = mean_lift_recall + 1.96 * sd_lift_recall / sqrt(n_ex),
+
+    ci_lower_lift_precision = mean_lift_precision - 1.96 * sd_lift_precision / sqrt(n_ex),
+    ci_upper_lift_precision = mean_lift_precision + 1.96 * sd_lift_precision / sqrt(n_ex),
+  ) %>%
+  filter(quantile %in% c(0.001, 0.005, 0.01,0.02,0.03, 0.040, 0.050, 0.100)) %>%
+  select(cancer_type, agg_level, quantile, mean_recall, mean_lift_recall,ci_lower_lift_recall,
+         ci_upper_lift_recall, mean_precision, mean_lift_precision, ci_lower_lift_precision,
+         ci_upper_lift_precision)
+
+
+# save
+# wb <- createWorkbook()
+# addWorksheet(wb, "ROC_AUC_hotspots_vs_breakpoints")
+# addWorksheet(wb, "Recall_hotspots_vs_breakpoints")
+# addWorksheet(wb, "ROC_AUC_breakpoints_q")
+# addWorksheet(wb, "Recall_breakpoints_q")
+# 
+# writeData(wb, sheet="ROC_AUC_hotspots_vs_breakpoints", roc_data[roc_data$type == "hsp_vs_bkpt", ])
+# writeData(wb, sheet="Recall_hotspots_vs_breakpoints", recall_stats[recall_stats$type == "hsp_vs_bkpt", ])
+# writeData(wb, sheet="ROC_AUC_breakpoints_q", roc_data[roc_data$type == "bkpt_q", ])
+# writeData(wb, sheet="Recall_breakpoints_q", recall_stats[recall_stats$type == "bkpt_q", ])
+# 
+# saveWorkbook(wb, "../reports/train_randomness.xlsx", overwrite = T)
+
+
+# load baseline data on best features
+baseline_res_path <- "../data/output/classifier_results_best_features_boruta_sign/full_results/"
+roc_auc_data_base <- read.csv(paste0(baseline_res_path, "result_roc_auc_100000.csv"), row.names = 1, stringsAsFactors = F)
+recall_data_base <- read.csv(paste0(baseline_res_path, "result_recall_100000.csv"), row.names = 1, stringsAsFactors = F)
+roc_auc_data_base$type <- "base"
+recall_data_base$type <- "base"
+#join with new data
+roc_auc_data_all <- rbind(roc_auc_data, roc_auc_data_base)
+recall_data_base <- recall_data_base %>%
+  inner_join(map_df)
+recall_data_base$lift_precision <- recall_data_base$precision / recall_data_base$agg_level_num
+recall_data_all <- rbind(recall_data, recall_data_base)
+
+
+# load baseline data on all features
+baseline_all_res_path <- "../data/output/classifier_results/"
+roc_auc_data_base_all <- read.csv(paste0(baseline_all_res_path, "result_roc_auc_100000.csv"), row.names = 1, stringsAsFactors = F)
+roc_auc_data_base_all$type <- "base"
+roc_auc_data_base_all[roc_auc_data_base_all$agg_level == "all", 'type'] <- 'bkpt'
+roc_auc_data_base_all <- roc_auc_data_base_all[roc_auc_data_base_all$feat_group == "all", ]
+roc_auc_data_base_all$feat_group <- NULL
+recall_data_base_all <- read.csv(paste0(baseline_all_res_path, "result_recall_100000.csv"), row.names = 1, stringsAsFactors = F)
+recall_data_base_all <- recall_data_base_all[recall_data_base_all$feat_group == "all", ]
+recall_data_base_all$type <- "base"
+recall_data_base_all[recall_data_base_all$agg_level == "all", 'type'] <- 'bkpt'
+recall_data_base_all$feat_group <- NULL
+#join with new data
+roc_auc_data_base_all <- rbind(roc_auc_data %>% filter(type == "hsp_vs_bkpt"), roc_auc_data_base_all)
+recall_data_base_all <- recall_data_base_all %>%
+  left_join(map_df)
+recall_data_base_all$lift_precision <- recall_data_base_all$precision / recall_data_base_all$agg_level_num
+recall_data_base_all <- rbind(recall_data  %>% filter(type == "hsp_vs_bkpt"), recall_data_base_all)
+unique(recall_data_base_all$type)
+```
+
+## Comparison of models quality with different labeling of hotspots 
+
+### Distribution of test ROC AUC
+
+```{r fig.width=10}
+roc_auc_data_cur <- roc_auc_data_all[roc_auc_data_all$type != "hsp_vs_bkpt",]
+recall_data_cur <- recall_data_all[recall_data_all$type != "hsp_vs_bkpt",]
+
+
+ggplot(roc_auc_data_cur, aes(x=agg_level, y=te_auc, fill=agg_level)) + 
+  geom_boxplot() + 
+  scale_fill_jco() + 
+  facet_wrap(~ cancer_type, nrow=2, scales="free_y") + 
+  theme(legend.position = "bottom")
+
+```
+
+Выводы:
+
+ - Практически для всех типов рака (за исключением bone, brain) наблюдается рост медианного тестового ROC AUC при повышении порога разметки хотспотов: чем меньшее количество окон (с более высокой плотностью) размечается как хотспоты, тем выше качество их выделения
+ - Более того, для blood, breast, ovary, pancreatic, prostate, uterus боксплоты тестового ROC AUC для наивысшей разметки хотспотов (не менее 99%) не пересекаются с боксплотами тестового ROC AUC для разметки 90%
+ - При этом стоит отметить, что стандартное отклонение тестового ROC AUC также возрастает при повышении порога разметки хотспотов
+
+### Distribution of lift of recall/precision for different probability quantiles
+
+```{r fig.width=16}
+ggplot(recall_data_cur %>%
+  filter(quantile %in% c(0.03, 0.05,0.1)), 
+  aes(x=agg_level, fill=agg_level, y=lift_recall)) + 
+  geom_boxplot() + 
+  facet_grid(quantile ~ cancer_type, scales = "free_y") + 
+  scale_fill_jco() + 
+  theme(legend.position = "bottom") + 
+  ggtitle("lift of recall")
+```
+
+```{r fig.width=15}
+ggplot(recall_data_cur %>%
+  filter(quantile %in% c(0.03, 0.05,0.1)), 
+  aes(x=agg_level, fill=agg_level, y=lift_precision)) + 
+  geom_boxplot() + 
+  facet_grid(quantile ~ cancer_type, scales = "free_y") + 
+  scale_fill_jco() + 
+  theme(legend.position = "bottom") + 
+  ggtitle("lift of precision")
+```
+Выводы:
+
+ - Для типов рака, для которых в качестве оптимального был выбран уровень разметки хотспотов 99,9% (blood, brain, liver, pancreatic), стандартное отклонение lift of recall и lift of precision несравнимо большое относительно более низких порогов 
+ - Из остальных типов рака практически для всех (за исключением bone), а также для pancreatic наблюдается рост медианного lift of recall при повышении порога разметки хотспотов, при этом данная зависимость наблюдается для всех рассмотренных probability quantile (0.03, 0.05, 0.1) 
+ - Из остальных типов рака для всех наблюдается рост медианного lift of precision при повышении порога разметки хотспотов, при этом данная зависимость наблюдается для всех рассмотренных probability quantile (0.03, 0.05, 0.1) 
+ 
+0.05 probability quantile
+
+```{r}
+rec_eff <- recall_data_cur %>%
+  filter(quantile == 0.03) %>%
+  select("cancer_type","agg_level","lift_recall","lift_precision") %>%
+  group_by(cancer_type, agg_level) %>%
+  summarize(
+    median_lift_recall = median(lift_recall),
+    median_lift_precision = median(lift_precision),
+  )  %>%
+  melt(id.vars=c("cancer_type", "agg_level")) 
+
+hsp_lev <- rec_eff %>%
+  filter(agg_level >= "99") %>% 
+  select(-agg_level) %>%
+  rename("value99" = "value")
+
+rec_eff <- rec_eff %>%
+  filter(agg_level < "99") %>%
+  inner_join(
+    hsp_lev, by=c("cancer_type", "variable")
+  )
+rec_eff <- rec_eff %>%
+  mutate(
+    ratio = value/value99,
+    ratio_reversed = value99/value
+    
+  )
+
+ggplot(rec_eff, aes(x=cancer_type, y=ratio, fill=agg_level)) +
+  geom_bar(stat="identity",position="dodge") + 
+  scale_fill_jco() +
+  facet_wrap(~variable, nrow=2, scales = "free_y") + 
+  ggtitle("Median lifts proportion (for given labeling to baseline hotspot labeling)")
+```
+
+Разница в качестве для разных порогов разметки хотспотов:
+
+  - распределение отличается для lift of precision и lift of recall. В целом прирост в метрике lift of precision для высоких порогов по сравнению с более низкими порогами намного выше, чем вlift of recall: если сравнивать минимальные отличия, то для skin cancer lift of precision для высокого порога разметки хотспотов в 3 раза выше, чем для остальных уровней, в то время как для bone cancer lift of recall для высокого порога разметки хотспотов только в 1-1,6 раз выше, чем для остальных уровней
+  - для lift of recall: прирост при выделении хотспотов с более высоким порогом максимален для pancreatic, ovary, prostate, breast (для 95% - от 4,2 до 8,8; для 90% - от 4,8 до 10,7; для 75% - от 12,2 до 32,8); минимален для bone, brain
+  - для lift of precision: прирост при выделении хотспотов с более высоким порогом максимален для blood, bone, brain  (для 95% - от 30 до 50; для 90% - от 24 до 50; для 75% - от 75% - от 20.8 до 41.7); минимален для skin
+
+
+> Таким образом:
+>
+> - Для практически всех типов рака (за исключением bone, brain) все рассматриваемые метрики (ROC AUC, median lift of precision, median lift of recall) вырастают при повышении порога выдления хотспотов, т.е. чем большей плотности окна мы пытаемся выделить, тем лучше это получается или другими словами хотспоты большей плотности разрывов лучше отделимы от остальных участков генома, чем хотспоты меньшей плотности разрывов.
+ - Максимальные различия наблюдаются для pancreatic, ovary, prostate, breast
+ - При этом хотя для bone, brain не наблюдается рост median test ROC AUC и значительный рост median lift of recall, median lift of precision повышается.
+ 
+ 
+## Comparison of models quality for baseline model (hospots vs all the rest windows - built on all features) and reduced model (hotspots vs rest breakpoints)
+
+ROC AUC
+
+```{r fig.height=9}
+ggplot(roc_auc_data_base_all, aes(x=agg_level, y=te_auc, fill=type)) + 
+  geom_boxplot() + 
+  facet_wrap(~ cancer_type, ncol=2, scales="free_y") + 
+  scale_fill_jco()
+```
+
+
+### Distribution of lift of recall for different probability quantiles
+
+```{r fig.width=16}
+
+ggplot(recall_data_base_all %>%
+  filter(quantile %in% c(0.03, 0.05,0.1)), 
+  aes(x=agg_level, fill=type, y=lift_recall)) + 
+  geom_boxplot() + 
+  facet_grid(quantile ~ cancer_type, scales = "free_y") + 
+  scale_fill_jco() + 
+  theme(legend.position = "bottom") + 
+  ggtitle("lift of recall")
+```
+
+Cases when lift of recall for breakpoints prediction models is significantly lower than for hotspots prediction models 
+
+```{r fig.width=10}
+
+ggplot(recall_data_base_all %>%
+  filter(
+    quantile %in% c(0.03, 0.05,0.1),
+    cancer_type %in% c("breast", "pancreatic", "prostate", "ovary")
+    ), 
+  aes(x=agg_level, fill=type, y=lift_recall)) + 
+  geom_boxplot() + 
+  facet_grid(quantile ~ cancer_type, scales = "free_y") + 
+  scale_fill_jco() + 
+  theme(legend.position = "bottom") + 
+  ggtitle("lift of recall")
+```
+
+Cases when lift of recall for breakpoints prediction models is not significantly lower than for hotspots prediction models 
+
+```{r fig.width=10}
+
+ggplot(recall_data_base_all %>%
+  filter(
+    quantile %in% c(0.03, 0.05,0.1),
+    cancer_type %in% c("blood","bone", "brain", "liver", "skin", "uterus")
+    ), 
+  aes(x=agg_level, fill=type, y=lift_recall)) + 
+  geom_boxplot() + 
+  facet_grid(quantile ~ cancer_type, scales = "free_y") + 
+  scale_fill_jco() + 
+  theme(legend.position = "bottom") + 
+  ggtitle("lift of recall")
+```
+
+
+### Distribution of lift of precision for different probability quantiles
+
+```{r fig.width=16}
+
+ggplot(recall_data_base_all %>%
+  filter(
+    quantile %in% c(0.03, 0.05,0.1),
+    type != "bkpt"
+    ), 
+  aes(x=agg_level, fill=type, y=lift_precision)) + 
+  geom_boxplot() + 
+  facet_grid(quantile ~ cancer_type, scales = "free_y") + 
+  scale_fill_jco() + 
+  theme(legend.position = "bottom") + 
+  ggtitle("lift of precision")
+```
+
+Cases when lift of recall for breakpoints prediction models is significantly lower than for hotspots prediction models 
+
+```{r fig.width=16}
+
+ggplot(recall_data_base_all %>%
+  filter(
+    quantile %in% c(0.03, 0.05,0.1),
+    type != "bkpt",
+    cancer_type %in% c("breast", "pancreatic", "prostate", "ovary")
+    ), 
+  aes(x=agg_level, fill=type, y=lift_precision)) + 
+  geom_boxplot() + 
+  facet_grid(quantile ~ cancer_type, scales = "free_y") + 
+  scale_fill_jco() + 
+  theme(legend.position = "bottom") + 
+  ggtitle("lift of precision")
+```
+
+Cases when lift of recall for breakpoints prediction models is not significantly lower than for hotspots prediction models 
+
+```{r fig.width=16}
+
+ggplot(recall_data_base_all %>%
+  filter(
+    quantile %in% c(0.03, 0.05,0.1),
+    type != "bkpt",
+    cancer_type %in% c("blood","bone", "brain", "liver", "skin", "uterus")
+    ), 
+  aes(x=agg_level, fill=type, y=lift_precision)) + 
+  geom_boxplot() + 
+  facet_grid(quantile ~ cancer_type, scales = "free_y") + 
+  scale_fill_jco() + 
+  theme(legend.position = "bottom") + 
+  ggtitle("lift of precision")
+```
+
+Lift of precision не очень корректно анализировать, так как для blood, bone, brain в обучающей выборке для моделей предсказания хотспотов против разрывов всего лишь 1500-2500 наблюдения, в то время как в остальных типах рака в 10-100 раз больше. 
+
+
+Нагляднее всего различия в lift of recall заметны присравнении точечных оценок, а не распределений, поэтому рассчитаем медиану и доверительный интервал для среднего lift of recall для всех типов моделей.
+
+
+Отношение:
+
+  нижней границы доверительного интервала для среднего lift of recall для моделей предсказания хотспотов к 
+  медиане lift of recall для моделей предсказания разрывов
+
+Серый цвет - inf (т.е. так отмечены модели, для которых медиана lift of recall для моделей предсказания разрывов равна 0)
+```{r fig.width=10}
+rec_stats <- recall_data_base_all %>%
+  filter(quantile %in% c(0.03, 0.05,0.1)) %>%
+  group_by(
+    cancer_type,
+    agg_level,
+    type,
+    quantile
+  ) %>%
+  summarize(
+    mean_lift_recall = mean(lift_recall),
+    median_lift_recall = median(lift_recall),
+    sd_lift_recall = sd(lift_recall),
+    n_ex = n()
+  )  %>%
+  mutate(
+    ci_lower_lift_recall = mean_lift_recall - 1.96 * sd_lift_recall / sqrt(n_ex)
+  )
+  
+rec_stats_bkpt <- rec_stats %>%
+  filter(agg_level == "all") %>%
+  ungroup() %>%
+  select(cancer_type, quantile, median_lift_recall) %>%
+  rename("bkpt" = "median_lift_recall")
+
+rec_stats_all <- rec_stats %>%
+  filter(agg_level != "all") %>%
+  select(
+    cancer_type, 
+    agg_level,
+    type,
+    quantile,
+    ci_lower_lift_recall
+    ) %>%
+  dcast(cancer_type + agg_level + quantile ~ type, value.var = "ci_lower_lift_recall")
+
+rec_stats_all <- rec_stats_all %>%
+  inner_join(
+    rec_stats_bkpt, by=c("cancer_type","quantile")) %>%
+  mutate(
+    ratio_hsp_to_bkpt =  base / bkpt,
+    ratio_hspvsbkpt_to_bkpt =  hsp_vs_bkpt / bkpt,
+    ratio_hsp_to_hspvsbkpt =  base/ hsp_vs_bkpt
+  )
+
+lev_cancer_types <- c("pancreatic", "breast", "prostate","ovary", "uterus", "skin","liver", "blood", "bone", "brain")
+rec_stats_all$cancer_type <- factor(rec_stats_all$cancer_type, levels = lev_cancer_types)
+
+ggplot(rec_stats_all, aes(x=as.character(quantile), y=cancer_type, fill=ratio_hsp_to_bkpt)) + 
+  geom_tile() + 
+  facet_grid(~agg_level, switch = "x")+ 
+  scale_fill_gradientn(colours = pal)+
+  theme(strip.placement = "outside")
+```
+
+
+Отношение:
+
+  нижней границы доверительного интервала для среднего lift of recall для моделей предсказания хотспотов к 
+  нижней границе доверительного интервала для среднего lift of recall для моделей предсказания хотспотов против разрывов
+  
+Для наглядности визуализации два негативных выброса (-27.82 и -1.05) приравнены к 0,5; 4 позитивных выброса (от 3,39 до 8,12) - к 3
+
+```{r fig.width=10}
+rec_stats_all$ratio_hsp_to_hspvsbkpt_bucket <- rec_stats_all$ratio_hsp_to_hspvsbkpt 
+rec_stats_all$ratio_hsp_to_hspvsbkpt_bucket[rec_stats_all$ratio_hsp_to_hspvsbkpt < 0.85] <- 0.5
+rec_stats_all$ratio_hsp_to_hspvsbkpt_bucket[rec_stats_all$ratio_hsp_to_hspvsbkpt > 3] <- 3
+ggplot(rec_stats_all, aes(x=as.character(quantile), y=cancer_type, fill=ratio_hsp_to_hspvsbkpt_bucket)) + 
+  geom_tile() + 
+  facet_grid(~agg_level, switch = "x")+ 
+  scale_fill_gradientn(colours = pal)+
+  theme(strip.placement = "outside")
+```
+
+На данных графиках видно, что отчетливо выделяются 2 кластера:
+
+  1. Pancreatic, breast, prostate, ovary. Для этих типов рака:
+
+  - lift of recall для моделей предсказания разрывов близок к 0 (т.е. **разрывы плохо отличимы от остальных участков генома**)
+  - lift of recall для моделей предсказания хотспотов достаточно высок (т.е. хотспоты выделяются из всех участков генома с помощью модели в 2-15 раз лучше, чем при случайном выборе)
+  - отношение нижней границы доверительного интервала для среднего lift of recall для моделей предсказания хотспотов к медиане lift of recall для моделей предсказания разрывов высоко (**хотспоты выделять легче, чем разрывы**)
+  - отношение нижней границы доверительного интервала для среднего lift of recall для моделей предсказания хотспотов к 
+  нижней границе доверительного интервала для среднего lift of recall для моделей предсказания хотспотов против разрывов близко к 1 - находится в диапазоне 0,96 - 1,18 (т.е. **ограничение выборки до разрывов не облегчает задачу выделения хотспотов**)
+  - это топ-4 типа рака по количеству разрывов в исходных данных (от 71 000 до 192 000), при этом для каждого из этих типов рака представлено 7-12 типов разрывов 
+  
+> На данных для этих типов рака подтверждается гипотеза о том, что разрывы в целом наблюдаются в случайных участках генома, однако есть локации, в которых разрывы появляются наиболее часто и они могут быть объяснены геномными характеристиками.
+
+  2. Остальные типы рака.
+  
+  - lift of recall для моделей предсказания разрывов для всех случаев (кроме skin) выше 0
+  - lift of recall для моделей предсказания хотспотов ниже по сравнению с типами рака для первого кластера (т.е. хотспоты этих типов рака сложнее выделять)
+  - отношение нижней границы доверительного интервала для среднего lift of recall для моделей предсказания хотспотов к медиане lift of recall для моделей предсказания разрывов невысоко (кроме uterus) (**способности выделения хотспотов и разрывов отличаются не кардинально**)
+  - отношение нижней границы доверительного интервала для среднего lift of recall для моделей предсказания хотспотов к 
+  нижней границе доверительного интервала для среднего lift of recall для моделей предсказания хотспотов против разрывов в большинстве случаев отлично от 1 - для 75% это значение больше 1,18 (т.е. **в среднем ограничение выборки до разрывов усложняет задачу выделения хотспотов**)
+  - для каждого из этих типов рака представлено 4-7 типов разрывов, а количество разрывов изменяется от 1 500 до 55 000  
+    
+> Для данной группы типов рака наблюдается другое распределение по исследуемым характеристикам по сравнению с первой группой типов рака, и на имеющихся данных сделанный для первой группы типов рака вывод не подтверждается для этой группы типов рака, причиной чего может быть неполнота имеющихся данных.
+  

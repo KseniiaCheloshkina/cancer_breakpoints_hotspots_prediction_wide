@@ -10,7 +10,7 @@ source("../cbp_data/get_intersections.R")
 source("../cbp_data/get_genome_windows.R")
 
 # set window size
-win_len <- 1000000
+win_len <- 100000
 
 path_to_data_folder <- "../../cbp_data/data/"
 

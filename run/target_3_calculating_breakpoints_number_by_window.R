@@ -13,7 +13,7 @@ source("../cbp_data/get_intersections.R")
 win_len <- 10000
 
 path_to_data_folder <- "../cbp_data/data/"
-path_to_bkpt <- 'breakpoints/raw_release_28/after_preprocessing/'
+path_to_bkpt <- 'raw breakpoints/raw_release_28/after_preprocessing/'
 
 output_path <- "data/target/"
 

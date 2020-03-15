@@ -11,13 +11,11 @@ output:
 library(ggplot2)
 library(ggsci)
 library(wesanderson)
-library("ggdendro")
 
 library(dplyr)
 library(reshape2)
 
 library(formattable)
-library(webshot)
 
 library(openxlsx)
 
@@ -51,15 +49,22 @@ roc_auc_cancer_stats <- all_features_data %>%
 roc_auc_cancer_stats %>% 
   arrange(min_test_auc)
 ```
-
-
+Distribution of test ROC AUC for all cancer types by hotspots labeling
 ```{r fig.width=10}
-ggplot(all_features_data, aes(te_auc, fill=agg_level)) +
-  geom_density(alpha=0.5)+
+g1 <- ggplot(all_features_data, aes(y=te_auc, fill=agg_level)) +
+  geom_boxplot()+
   facet_wrap(~ cancer_type, nrow = 2) +
-  ggtitle("Distribution of test ROC AUC for all cancer types by hotspots labeling") + 
-  scale_fill_jco()
-  
+  scale_fill_jco() + 
+  xlab("")+
+  ylab("Test ROC AUC")+
+  labs(fill = "Labeling type")+
+  theme(
+      text = element_text(size = 8, family = "arial"),
+      axis.title.x = element_text(size = 10),
+      axis.title.y = element_text(size = 10),
+      legend.position="bottom", legend.title = element_text(size = 10),
+    )
+g1
 ```
 
 Difference between train and test
@@ -343,7 +348,7 @@ comp_df <- best_labeling %>%
 comp_df %>%
   select(cancer_type, breakpoints_min_test_auc, hotspot_min_test_auc, breakpoints_test_auc, hotspot_test_auc) 
 ```
-
+Distribution of test ROC AUC for best labeling hotspot profile and all breakpoints prediction
 ```{r fig.width=10, fig.asp=0.5}
 
 best_hsp_bkpt <- all_features_data %>%
@@ -357,11 +362,30 @@ best_hsp_bkpt <- all_features_data %>%
       mutate(type="breakpoints") 
   )
 
-ggplot(best_hsp_bkpt, aes(x=cancer_type, y=te_auc, fill=type)) + 
-  geom_boxplot() + 
-  ggtitle('Distribution of test ROC AUC for best labeling hotspot profile
-          and all breakpoints prediction') + 
-  scale_fill_jco()
+# ggplot(best_hsp_bkpt, aes(x=cancer_type, y=te_auc, fill=type)) + 
+#   geom_boxplot() + 
+#   ggtitle('Distribution of test ROC AUC for best labeling hotspot profile
+#           and all breakpoints prediction') + 
+#   scale_fill_jco()
+
+g2 <- ggplot(best_hsp_bkpt, aes(te_auc, fill=type)) + 
+  geom_density(alpha=0.5) +
+  facet_wrap(~cancer_type, nrow = 2, scales = "free")+
+  scale_fill_jco()+
+  xlab("Test ROC AUC")+
+  ylab("Density") + 
+  theme(
+      text = element_text(size = 8, family = "arial"),
+      axis.title.x = element_text(size = 10),
+      axis.title.y = element_text(size = 10),
+      legend.position="bottom", legend.title = element_text(size = 10),
+    ) + 
+  labs(fill = "Model type")
+
+# ggsave(filename = "Fig2.tiff", plot = g2, device = "tiff", path = "../paper_materials/",
+#        dpi = 600, units = "in", width = 5, height = 3, scale = 2, compression = "lzw")
+
+g2
 ```
 
 
@@ -478,10 +502,19 @@ comp_rec_pl <- comp_rec %>%
   select('cancer_type', 'agg_level', 'recall', 'precision', 'lift_recall', 'lift_precision') %>%
   melt(id.vars=c("cancer_type","agg_level"))
 
-ggplot(comp_rec_pl, aes(x=cancer_type, y=value, fill=agg_level)) + 
+g3 <- ggplot(comp_rec_pl, aes(x=cancer_type, y=value, fill=agg_level)) + 
   geom_boxplot() + 
   facet_wrap(~variable, scales = "free", nrow = 4) + 
-  scale_fill_jco()
+  scale_fill_jco() + 
+  xlab("Cancer type")+
+  labs(fill = "Labeling type")+
+  theme(
+      text = element_text(size = 8, family = "arial"),
+      axis.title.x = element_text(size = 10),
+      axis.title.y = element_text(size = 10),
+      legend.position="bottom", legend.title = element_text(size = 10),
+    )
+g3
 ```
 
 
@@ -752,19 +785,30 @@ recall_stats_bkpt <- ci_stats_bkpt %>%
          mean_precision)
 
 # save
-wb <- createWorkbook()
-addWorksheet(wb, "ROC_AUC_hotspots")
-addWorksheet(wb, "ROC_AUC_breakpoints")
-addWorksheet(wb, "Recall_hotspots")
-addWorksheet(wb, "Recall_breakpoints")
-
-writeData(wb, sheet="ROC_AUC_hotspots", roc_data[roc_data$agg_level != "all", ])
-writeData(wb, sheet="ROC_AUC_breakpoints", roc_data[roc_data$agg_level == "all", ])
-
-writeData(wb, sheet="Recall_hotspots", recall_stats_hsp)
-writeData(wb, sheet="Recall_breakpoints", recall_stats_bkpt)
-
-saveWorkbook(wb, "../reports/train_baseline.xlsx", overwrite = T)
+# wb <- createWorkbook()
+# addWorksheet(wb, "ROC_AUC_hotspots")
+# addWorksheet(wb, "ROC_AUC_breakpoints")
+# addWorksheet(wb, "Recall_hotspots")
+# addWorksheet(wb, "Recall_breakpoints")
+# 
+# writeData(wb, sheet="ROC_AUC_hotspots", roc_data[roc_data$agg_level != "all", ])
+# writeData(wb, sheet="ROC_AUC_breakpoints", roc_data[roc_data$agg_level == "all", ])
+# 
+# writeData(wb, sheet="Recall_hotspots", recall_stats_hsp)
+# writeData(wb, sheet="Recall_breakpoints", recall_stats_bkpt)
+# 
+# saveWorkbook(wb, "../reports/train_baseline.xlsx", overwrite = T)
 ```
 
+
+```{r}
+library(ggpubr)
+g_f <- ggarrange(g1, g3,  
+          labels = c("A", "B"),
+          ncol = 1, nrow = 2, heights = c(1, 2),
+          font.label = list(size = 10, color = "black", face ="bold"))
+g_f
+# ggsave(filename = "Fig2.tiff", plot = g_f, device = "tiff", path = "../paper_materials/supplementary figures/",
+#        dpi = 600, units = "in", width = 6, height = 8, scale = 2, compression = "lzw")
+```
 

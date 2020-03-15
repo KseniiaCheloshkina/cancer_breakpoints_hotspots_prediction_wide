@@ -279,6 +279,27 @@ ggplot(df_hits_last_iter_agg, aes(x=cancer_type, y=feature,fill=n_best)) +
   scale_fill_gradientn(colours = pal)
 ```
 
+```{r fig.height=12}
+g1 <- ggplot(df_hits_last_iter_agg, aes(x=cancer_type, y=feature,fill=n_best)) + 
+  geom_tile() + 
+  scale_fill_gradientn(colours = pal) + 
+  xlab("Cancer type") + 
+  ylab("Feature") +
+  theme_minimal()+ # minimal theme
+  theme(
+    text = element_text(size = 8, family = "arial"),
+    axis.title.x = element_text(size = 10),
+    axis.title.y = element_text(size = 10),
+    ) + 
+  labs(fill = "Number of \nexecutions")
+g1
+
+# ggsave(filename = "Fig3.tiff", plot = g1, device = "tiff", path = "../paper_materials/supplementary figures/",
+#        dpi = 600, units = "in", width = 4, height = 5, scale = 2, compression = "lzw")
+```
+
+
+
 Aggregation by feature group for each cancer type: number of datasets in which features of the feature group selected.
 
 

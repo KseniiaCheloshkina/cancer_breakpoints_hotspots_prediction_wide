@@ -205,7 +205,7 @@ for (target_column in hsp_cols){
   
   all_features_cols <- c(all_conserved_feats, grep(x = all_tissue_spec_feats, 
                                                    pattern = cancer_type, value = TRUE))
-  
+  all_features_cols[-grep(all_features_cols, pattern = "upper")]
   # define features list for iterative model evaluation
   feat_groups <- list()
   feat_groups[["all"]] <- intersect(features_cols, all_features_cols) 
@@ -334,3 +334,119 @@ for (target_column in hsp_cols){
   
   pb$tick()
 }
+
+
+
+
+
+
+### get total number of features for each cancer type
+
+script_path <- dirname(rstudioapi::getSourceEditorContext()$path)
+setwd(script_path)
+setwd('..')
+
+library(dplyr)
+library(reshape2)
+
+win_len <- 100000
+
+# load data
+data_path <- "data/datasets/" 
+data <- read.csv(
+  paste0(data_path, "dataset_", format(win_len, scientific = FALSE), ".csv")
+)
+
+hsp_cols <- grep(x = names(data), pattern = "hsp", value = TRUE)
+
+conserved_features <- c(
+  "A_Phased_Repeat", "Direct_Repeat", 
+  "Inverted_Repeat", "Mirror_Repeat", "Short_Tandem_Repeat", 
+  "Z_DNA_Motif", "G_quadruplex", 
+  "stemloops_16_50", "stemloops_6_15", 
+  "X3UTR", "X5UTR", "codingExons", "downstream", "introns", "promoters", "WholeGenes", 
+  "tad_boundaries_liver", "tad_boundaries_ovary", "tad_boundaries_pancreatic",
+  
+  "cancer_liver_ATF3.human", "cancer_liver_CTCF.human", "cancer_liver_EGR1.human",
+  "cancer_liver_FOXA1.human", "cancer_liver_FOXA2.human", "cancer_liver_GABPA.human",
+  "cancer_liver_HNF4A.human", "cancer_liver_HNF4G.human", "cancer_liver_JUND.human",
+  "cancer_liver_MAX.human", "cancer_liver_NR2F2.human", "cancer_liver_REST.human",
+  "cancer_liver_RXRA.human", "cancer_liver_SP1.human", "cancer_liver_YY1.human",
+  "cancer_liver_ZBTB33.human"
+)
+tissue_spec_feats <- setdiff(names(data), c("chr","from","to", hsp_cols, conserved_features))
+
+ss_cols <- c ("chr", "from", "to")
+features_cols <- c(conserved_features, tissue_spec_feats)
+
+all_tissue_spec_feats <- vector()
+for (feat in features_cols){
+  for (col in tissue_spec_feats){
+    all_tissue_spec_feats <- c(all_tissue_spec_feats, grep(x = feat, pattern = col, value = TRUE))  
+  }
+}
+all_conserved_feats <- setdiff(features_cols, all_tissue_spec_feats)
+
+# get groups of features
+sec_str <- c("A_Phased_Repeat","Direct_Repeat", "Inverted_Repeat", "Mirror_Repeat","Short_Tandem_Repeat",
+             "G_quadruplex", "stemloops_16_50", "stemloops_6_15", "Z_DNA_Motif")
+reg <- c("X3UTR", "X5UTR", "codingExons", "downstream", "introns", "promoters", "WholeGenes")
+tad <- c("tad_boundaries_liver", "tad_boundaries_ovary", "tad_boundaries_pancreatic")
+chromatin <-c("cancer_skin_DNase_seq", "cancer_brain_DNase_seq", "cancer_blood_DNase_seq",
+              "cancer_prostate_DNase_seq", "cancer_pancreas_DNase_seq", "cancer_ovary_DNase_seq",
+              "cancer_liver_DNase_seq", "cancer_breast_DNase_seq", "cancer_uterus_DNase_seq",
+              "cancer_bone_DNase_seq")
+methyl <- c("cancer_brain_DNA_methylation", "cancer_breast_DNA_methylation",
+            "cancer_liver_DNA_methylation", "cancer_pancreas_DNA_methylation",
+            "cancer_skin_DNA_methylation", "cancer_uterus_DNA_methylation")
+histones <- c( "cancer_liver_H3K27ac.human", "cancer_uterus_H3K27ac.human", "cancer_blood_H3K27ac.human",
+               "cancer_brain_H3K27ac.human",
+               "cancer_pancreas_H3K27ac.human","cancer_blood_H3K27me3.human","cancer_brain_H3K27me3.human",    
+               "cancer_blood_H3K36me3.human","cancer_pancreas_H3K36me3.human","cancer_brain_H3K36me3.human",    
+               "cancer_pancreas_H3K4me1.human","cancer_blood_H3K4me1.human","cancer_brain_H3K4me1.human",
+               "cancer_breast_H3K4me3.human","cancer_uterus_H3K4me3.human","cancer_liver_H3K4me3.human",
+               "cancer_brain_H3K4me3.human","cancer_blood_H3K4me3.human","cancer_skin_H3K4me3.human",
+               "cancer_pancreas_H3K4me3.human","cancer_brain_H3K9me3.human","cancer_pancreas_H3K9me3.human",
+               "cancer_blood_H3K9me3.human" )
+tf <- c("cancer_liver_ATF3.human", "cancer_liver_CTCF.human", "cancer_pancreas_CTCF.human",
+        "cancer_liver_EGR1.human", "cancer_liver_FOXA1.human", "cancer_liver_FOXA2.human", 
+        "cancer_liver_GABPA.human","cancer_liver_HNF4A.human", "cancer_liver_HNF4G.human",
+        "cancer_liver_JUND.human","cancer_liver_MAX.human", "cancer_liver_NR2F2.human",
+        "cancer_liver_REST.human", "cancer_liver_RXRA.human", "cancer_liver_SP1.human",
+        "cancer_liver_YY1.human", "cancer_liver_ZBTB33.human")
+
+
+all_analyzed_cancers <- data.frame(
+  cancer_type = c("none"), 
+  n_features = c(0), 
+  n_sec_str = c(0),
+  n_reg = c(0),
+  n_tad = c(0),
+  n_tf = c(0),
+  n_histones = c(0),
+  n_methyl = c(0),
+  n_chromatin = c(0),
+  stringsAsFactors = F)
+
+for (target_column in hsp_cols){
+  cancer_type <- strsplit(target_column, "_")[[1]][3]
+  if (cancer_type %in% unique(all_analyzed_cancers$cancer_type)){
+    next
+  } 
+  all_features_cols <- c(all_conserved_feats, grep(x = all_tissue_spec_feats, pattern = cancer_type, value = TRUE))
+  all_analyzed_cancers <- rbind(all_analyzed_cancers, data.frame(
+    cancer_type = c(cancer_type),
+    n_features = c(length(all_features_cols)),
+    n_sec_str = c(length(intersect(sec_str, all_features_cols))),
+    n_reg = c(length(intersect(reg, all_features_cols))),
+    n_tad = c(length(intersect(tad, all_features_cols))),
+    n_tf = c(length(intersect(tf, all_features_cols))),
+    n_histones = c(length(intersect(histones, all_features_cols))),
+    n_methyl = c(length(intersect(methyl, all_features_cols))),
+    n_chromatin = c(length(intersect(chromatin, all_features_cols))), 
+    stringsAsFactors = F)
+    )
+}
+all_analyzed_cancers <- all_analyzed_cancers[all_analyzed_cancers$cancer_type != "none", ]
+write.csv(all_analyzed_cancers, "reports/n_features_by_cancer_type.csv")
+

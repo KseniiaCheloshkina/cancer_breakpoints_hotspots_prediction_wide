@@ -219,6 +219,33 @@ ggplot(recall_stats_comp_m %>% filter(quantile == 0.03), aes(x=cancer_type, y=va
 ```
 
 
+```{r}
+comp_rec_pl <- recall_stats_comp_m %>% 
+  filter(quantile == 0.03)
+
+comp_rec_pl[grep(x = comp_rec_pl$var_new, pattern = "prec"), "variable_type"] <- "lift_precision"
+comp_rec_pl[grep(x = comp_rec_pl$var_new, pattern = "recall"), "variable_type"] <- "lift_recall"
+
+g1 <- ggplot(comp_rec_pl, aes(x=cancer_type, y=value, fill=type)) +
+  geom_bar(stat='identity',  color="black", position = "dodge") +
+  facet_wrap(~variable_type,nrow = 2) +
+  scale_fill_jco() +
+    theme(
+      text = element_text(size = 8, family = "arial"),
+      axis.title.x = element_text(size = 10),
+      axis.title.y = element_text(size = 10),
+      legend.position="bottom", legend.title = element_text(size = 10),
+    ) +
+  xlab("Cancer type") +
+  ylab("value") +
+  labs(fill = "Feature set")
+g1
+
+# ggsave(filename = "Fig3.tiff", plot = g1, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 5, height = 3, scale = 2, compression = "lzw")
+```
+
+
+
 0.05
 
 ```{r fig.width=10}
@@ -294,6 +321,24 @@ ggplot(best_features, aes(x=cancer_type, y=feature_ord, fill=feature_group))+
   geom_tile() + 
   scale_fill_jco()
 ```
+
+```{r}
+g2 <- ggplot(best_features, aes(x=cancer_type, y=feature_ord, fill=feature_group))+
+  geom_tile() + 
+  scale_fill_jco() +
+  theme(
+      text = element_text(size = 8, family = "arial"),
+      axis.title.x = element_text(size = 10),
+      axis.title.y = element_text(size = 10),
+      legend.title = element_text(size = 10),
+    ) +
+  xlab("Cancer type") + 
+  ylab("Feature") +
+  labs(fill = "Feature group")
+
+# ggsave(filename = "Fig4.tiff", plot = g2, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 5, height = 3, scale = 2, compression = "lzw")
+```
+
 
 Выводы:
 

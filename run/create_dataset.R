@@ -3,6 +3,7 @@ setwd(script_path)
 setwd('..')
 
 library(dplyr)
+library(reshape2)
 
 output_folder <- "data/datasets/"
 
@@ -257,3 +258,23 @@ write.csv(all_data,
           row.names = FALSE
           )
 
+
+
+### Summary of number of hotspots by cancer type and labeling type 
+
+hsp_cols <- grep(x = names(all_data), pattern = "hsp", value = TRUE)
+
+all_stats <- data.frame()
+for (nm in hsp_cols){
+  res_split <- strsplit(nm, "_")[[1]] 
+  lab_type <- res_split[2]
+  cancer_type <- res_split[3]
+  n_hsp <- sum(all_data[nm])
+  stats_n <- data.frame(
+    cancer_type = cancer_type,
+    labeling_type = lab_type,
+    n_hotspots = n_hsp
+  )
+  all_stats <- rbind(all_stats, stats_n)
+}
+write.csv(reshape2::dcast(all_stats, cancer_type ~ labeling_type), "reports/n_hsp.csv")

@@ -130,51 +130,51 @@ formattable(pu_data_final_stats %>% filter(type == "rp") %>% select(-type), alig
 ### get baseline model results
 
 # for almost all cancer types
-main_res_path <- "../data/output/classifier_results_best_features_50/"
-roc_auc_data <- read.csv(paste0(main_res_path, "result_roc_auc_100000.csv"), row.names = 1, stringsAsFactors = F)
-recall_data <- read.csv(paste0(main_res_path, "result_recall_100000.csv"), row.names = 1, stringsAsFactors = F)
-roc_auc_data_main <- roc_auc_data[!roc_auc_data$cancer_type %in% c("breast", "pancreatic", "prostate"), ]
-recall_data_main <- recall_data[!recall_data$cancer_type %in% c("breast", "pancreatic", "prostate"), ]
-
-# for pancreatic cancer
-pancr_res_path <- "../data/output/pancreatic_fs/"
-roc_auc_data <- read.csv(paste0(pancr_res_path, "result_roc_auc_100000.csv"), row.names = 1, stringsAsFactors = F)
-recall_data <- read.csv(paste0(pancr_res_path, "result_recall_100000.csv"), row.names = 1, stringsAsFactors = F)
-roc_auc_data_pancr <- roc_auc_data[roc_auc_data$feat_added == "upper_WholeGenes",]
-recall_data_pancr <- recall_data[recall_data$feat_added == "upper_WholeGenes", ]
-roc_auc_data_pancr$feat_added <- NULL
-recall_data_pancr$feat_added <- NULL
-
-# for prostate cancer
-prost_res_path <- "../data/output/prostate_fs/"
-roc_auc_data <- read.csv(paste0(prost_res_path, "result_roc_auc_100000.csv"), row.names = 1, stringsAsFactors = F)
-recall_data <- read.csv(paste0(prost_res_path, "result_recall_100000.csv"), row.names = 1, stringsAsFactors = F)
-roc_auc_data_prost <- roc_auc_data[roc_auc_data$feat_added == "cancer_liver_YY1.human",]
-recall_data_prost <- recall_data[recall_data$feat_added == "cancer_liver_YY1.human", ]
-roc_auc_data_prost$feat_added <- NULL
-recall_data_prost$feat_added <- NULL
-
+main_res_path <- "../data/output/classifier_results_best_features_boruta_sign/full_results/"
+roc_auc_data_full <- read.csv(paste0(main_res_path, "result_roc_auc_100000.csv"), row.names = 1, stringsAsFactors = F)
+recall_data_full <- read.csv(paste0(main_res_path, "result_recall_100000.csv"), row.names = 1, stringsAsFactors = F)
+# roc_auc_data_main <- roc_auc_data[!roc_auc_data$cancer_type %in% c("breast", "pancreatic", "prostate"), ]
+# recall_data_main <- recall_data[!recall_data$cancer_type %in% c("breast", "pancreatic", "prostate"), ]
+# 
+# # for pancreatic cancer
+# pancr_res_path <- "../data/output/pancreatic_fs/"
+# roc_auc_data <- read.csv(paste0(pancr_res_path, "result_roc_auc_100000.csv"), row.names = 1, stringsAsFactors = F)
+# recall_data <- read.csv(paste0(pancr_res_path, "result_recall_100000.csv"), row.names = 1, stringsAsFactors = F)
+# roc_auc_data_pancr <- roc_auc_data[roc_auc_data$feat_added == "upper_WholeGenes",]
+# recall_data_pancr <- recall_data[recall_data$feat_added == "upper_WholeGenes", ]
+# roc_auc_data_pancr$feat_added <- NULL
+# recall_data_pancr$feat_added <- NULL
+# 
+# # for prostate cancer
+# prost_res_path <- "../data/output/prostate_fs/"
+# roc_auc_data <- read.csv(paste0(prost_res_path, "result_roc_auc_100000.csv"), row.names = 1, stringsAsFactors = F)
+# recall_data <- read.csv(paste0(prost_res_path, "result_recall_100000.csv"), row.names = 1, stringsAsFactors = F)
+# roc_auc_data_prost <- roc_auc_data[roc_auc_data$feat_added == "cancer_liver_YY1.human",]
+# recall_data_prost <- recall_data[recall_data$feat_added == "cancer_liver_YY1.human", ]
+# roc_auc_data_prost$feat_added <- NULL
+# recall_data_prost$feat_added <- NULL
+# 
 # for breast cancer
-breast_res_path <- "../data/output/classifier_results_best_features_boruta_sign/"
-roc_auc_data_breast <- read.csv(paste0(breast_res_path, "result_roc_auc_100000.csv"), row.names = 1, stringsAsFactors = F)
-recall_data_breast <- read.csv(paste0(breast_res_path, "result_recall_100000.csv"), row.names = 1, stringsAsFactors = F)
+# breast_res_path <- "../data/output/classifier_results_best_features_boruta_sign/"
+# roc_auc_data_breast <- read.csv(paste0(breast_res_path, "result_roc_auc_100000.csv"), row.names = 1, stringsAsFactors = F)
+# recall_data_breast <- read.csv(paste0(breast_res_path, "result_recall_100000.csv"), row.names = 1, stringsAsFactors = F)
 
-roc_auc_data_full <- rbind(
-  roc_auc_data_main,
-  roc_auc_data_breast,
-  roc_auc_data_pancr,
-  roc_auc_data_prost
-)
+# roc_auc_data_full <- rbind(
+#   roc_auc_data_main,
+#   roc_auc_data_breast,
+#   roc_auc_data_pancr,
+#   roc_auc_data_prost
+# )
 
-recall_data_full <- rbind(
-  recall_data_main,
-  recall_data_breast,
-  recall_data_pancr,
-  recall_data_prost
-)
+# recall_data_full <- rbind(
+#   recall_data_main,
+#   recall_data_breast,
+#   recall_data_pancr,
+#   recall_data_prost
+# )
 
-roc_auc_data_full[roc_auc_data_full$agg_level == "99", "agg_level"] <- "99."
-recall_data_full[recall_data_full$agg_level == "99", "agg_level"] <- "99."
+# roc_auc_data_full[roc_auc_data_full$agg_level == "99", "agg_level"] <- "99."
+# recall_data_full[recall_data_full$agg_level == "99", "agg_level"] <- "99."
 
 
 recall_data_bl <- recall_data_full
@@ -401,6 +401,8 @@ prec_ci_stats_bl_comp <- rbind(prec_ci_stats_bl_rn, prec_ci_stats_bl_rp)
 ### ROC AUC
 
 roc_auc_data_bl <- roc_auc_data_full
+
+
 roc_auc_data_bl <- roc_auc_data_bl %>%
   select(-c("tr_auc", "win_len")) %>%
   rename("baseline" = "te_auc")
@@ -503,14 +505,26 @@ ggplot(roc_auc_ci_stats_bl, aes(x=cancer_type, y=mean_roc_auc_diff, fill=eps)) +
 Confidence interval for difference in median lift of recall (RP mode minus RN mode)
 
 ```{r fig.width=10}
-ggplot(recall_ci_stats_bl %>%filter(quantile_chr != "0.15"), 
+g1 <- ggplot(recall_ci_stats_bl %>%filter(quantile_chr != "0.15"), 
        aes(x=as.numeric(quantile_chr), y=mean_lift_recall_diff, colour=as.character(eps))) + 
   geom_ribbon(aes(ymin=ci_lower_lift_recall_diff, ymax=ci_upper_lift_recall_diff, fill=as.character(eps)), alpha=0.5) + 
   facet_wrap(~ cancer_type, nrow = 5,scales = "free") + 
   scale_fill_jco() + 
   scale_color_jco() + 
-  geom_hline(yintercept = 0)
-
+  geom_hline(yintercept = 0)+
+  xlab("Probability percentile") + 
+  ylab("Difference in lift of recall") +
+  theme(
+    text = element_text(size = 8, family = "arial"),
+    axis.title.x = element_text(size = 10),
+    axis.title.y = element_text(size = 10),
+    axis.text.y = element_text(hjust = 1),
+    legend.position="bottom", 
+    legend.title = element_text(size = 10),
+    ) + 
+  labs(fill = "Epsilon", color = "Epsilon")
+# ggsave(filename = "Fig5.tiff", plot = g1, device = "tiff", path = "../paper_materials/supplementary figures/", dpi = 600, units = "in", width = 5, height = 3, scale = 2, compression = "lzw")
+g1
 ```
 
 Выводы:
@@ -539,12 +553,25 @@ ggplot(prec_ci_stats_bl %>%filter(quantile_chr != "0.15"),
 Lift of recall by type of PU learning for best epsilon
 
 ```{r fig.width=10, fig.height=15}
-ggplot(recall_ci_stats_bl_comp, aes(x=quantile_chr, y=mean_lift_recall_diff, fill=type)) + 
+g2 <- ggplot(recall_ci_stats_bl_comp, aes(x=quantile_chr, y=mean_lift_recall_diff, fill=type)) + 
   geom_bar(stat="identity", color="black", position=position_dodge()) +
   geom_errorbar(aes(ymin=ci_lower_lift_recall_diff, ymax=ci_upper_lift_recall_diff), width=.2, position=position_dodge(.9))+
   scale_fill_jco()+
-  facet_wrap(~ cancer_type, nrow = 10, scales = "free")
+  facet_wrap(~ cancer_type, nrow = 10, scales = "free")+
+  xlab("Probability percentile") + 
+  ylab("Difference in lift of recall") +
+  theme(
+    text = element_text(size = 8, family = "arial"),
+    axis.title.x = element_text(size = 10),
+    axis.title.y = element_text(size = 10),
+    axis.text.y = element_text(hjust = 1),
+    legend.position="bottom", legend.title = element_text(size = 10),
+    ) + 
+  labs(fill = "PU learning mode")
 
+# ggsave(filename = "Fig6.tiff", plot = g2, device = "tiff", path = "../paper_materials/supplementary figures/", dpi = 600, units = "in", width = 4, height = 5, scale = 2, compression = "lzw")
+
+g2
 ```
 Выводы:
 1. Для большинcтва типов рака изменение процесса обучения модели с бинарной классификации на PU learning привело к снижению lift of recall. Это может объясняться тем, что так как при PU learning некоторые примеры могли не участвовать в обучении (если модель в них не была уверена), мы потеряли эти данные и впоследствии похожие на них примеры были оценены некорректно.
@@ -568,11 +595,23 @@ ggplot(prec_ci_stats_bl_comp, aes(x=quantile_chr, y=mean_lift_prec_diff, fill=ty
 ROC AUC
 
 ```{r fig.width=10}
-ggplot(roc_auc_ci_stats_bl_all, aes(x=eps, y=mean_roc_auc_diff, fill=type)) + 
+g3 <- ggplot(roc_auc_ci_stats_bl_all, aes(x=eps, y=mean_roc_auc_diff, fill=type)) + 
   geom_bar(stat="identity", color="black", position=position_dodge()) +
   geom_errorbar(aes(ymin=ci_lower_roc_auc_diff, ymax=ci_upper_roc_auc_diff), width=.2, position=position_dodge(.9))+
   scale_fill_jco()+
-  facet_wrap(~cancer_type, nrow = 5, scales = "free")
+  facet_wrap(~cancer_type, nrow = 5, scales = "free")+
+  xlab("Epsilon")+
+  ylab("Difference in ROC AUC") +
+  theme(
+    text = element_text(size = 8, family = "arial"),
+    axis.title.x = element_text(size = 10),
+    axis.title.y = element_text(size = 10),
+    axis.text.y = element_text(hjust = 1),
+    legend.position="bottom", legend.title = element_text(size = 10),
+    ) + 
+  labs(fill = "PU learning mode")
+# ggsave(filename = "Fig7.tiff", plot = g3, device = "tiff", path = "../paper_materials/supplementary figures/", dpi = 600, units = "in", width = 5, height = 3, scale = 2, compression = "lzw")
+g3
 ```
 
 Можно заметить, что для большинства типов рака изменение ROC AUC в PU learning по сравнению с базовой моделью положительно для RN mode и отрицательно для RP mode (uterus, pancreatic, ovary, brain, bone, blood), в то время как положительный эффект в обоих случаях наблюдается для skin (незначительный) и prostate (для eps=0.01, одинаково большой прирост для RN и RP), а для liver - сильный отрицательный эффект. Для breast в процедуре RN нет изменений по сравнению с базовой моделью, а в процедуре RP - сильный отрицательный эффект.
@@ -653,11 +692,105 @@ writeData(wb, sheet="ROC_AUC_RN", roc_auc_final_rn)
 writeData(wb, sheet="ROC_AUC_RP", roc_auc_final_rp)
 
 writeData(wb, sheet="Recall_RN", rec_final_rn)
-writeData(wb, sheet="Recall_RN", rec_final_rp)
-saveWorkbook(wb, "../reports/pu_learning_results.xlsx", overwrite = T)
+writeData(wb, sheet="Recall_RP", rec_final_rp)
+# saveWorkbook(wb, "../reports/pu_learning_results.xlsx", overwrite = T)
 
 ```
 
 Выводы в целом:
 1. PU learning не помог повысить качество классификации хотспотов (не выросли метрикиlift of recall/precision). Возможная причина - слишком сильная потеря данных в процессе обучения, ведущая к большей неопределенности. При этом для некоторых типов рака ROC AUC вырос на 1-5 п. в среднем, что говорит о том, что в целом положительные тестовые примеры стали ранжироваться выше, однако в топ примеров с максимальной вероятностью входит меньшее количество размеченных хотспотов (судя по данным recall).  
 2. Если сравнивать два рассмотренных режима PU learning, то для brain cancer (тип рака с минимальным и в абсолютном значении очень маленьким количеством исходных данных о разрывах) RP режим позволяет поднабрать качество по сравнению с RN (за счет разметки новых примеров как положительных - т.е. учесть возможный шум в данных по причине их неполноты), в то время как для типов рака с достаточно большим количеством исходных данных о разрывах (breast, pancreatic) использование дополнительных положительных примеров вносит шум.
+
+```{r}
+rec_rn <- read.xlsx('../reports/pu_learning_results.xlsx', sheet = "Recall_RN")
+roc_auc_rn <- read.xlsx('../reports/pu_learning_results.xlsx', sheet = "ROC_AUC_RN")
+rec_rp <- read.xlsx('../reports/pu_learning_results.xlsx', sheet = "Recall_RP")
+roc_auc_rp <- read.xlsx('../reports/pu_learning_results.xlsx', sheet = "ROC_AUC_RP")
+
+roc_auc_rn$mode <- "rn"
+roc_auc_rp$mode <- "rp"
+# rn
+rec_rn_3 <- rec_rn[rec_rn$quantile_chr == "0.03", ] %>%
+  select(c("cancer_type", "eps", "mean_recall", "mean_lift_recall", "ci_lower_lift_recall",
+           "ci_upper_lift_recall",  "mean_precision","mean_lift_prec", "ci_lower_lift_prec", "ci_upper_lift_prec")) %>%
+  setNames(c("Cancer type",	"Epsilon", "Mean recall",	"Mean lift of recall",
+  "Lower bound of confidence interval for mean lift of recall",	"Upper bound of confidence interval for mean  lift of recall",
+  "Mean precision",	"Mean lift of precision",	"Lower bound of confidence interval for mean lift of precision",
+  "Upper bound of confidence interval for mean  lift of precision"))
+rec_rn_5 <- rec_rn[rec_rn$quantile_chr == "0.05", ] %>%
+  select(c("cancer_type", "eps", "mean_recall", "mean_lift_recall", "ci_lower_lift_recall",
+           "ci_upper_lift_recall",  "mean_precision","mean_lift_prec", "ci_lower_lift_prec", "ci_upper_lift_prec")) %>%
+  setNames(c("Cancer type",	"Epsilon", "Mean recall",	"Mean lift of recall",
+  "Lower bound of confidence interval for mean lift of recall",	"Upper bound of confidence interval for mean  lift of recall",
+  "Mean precision",	"Mean lift of precision",	"Lower bound of confidence interval for mean lift of precision",
+  "Upper bound of confidence interval for mean  lift of precision"))
+
+roc_auc_rn <- roc_auc_rn %>%
+  select("cancer_type", "agg_level", "eps", "min_roc_auc", "sd_roc_auc", "median_roc_auc", "mean_roc_auc",
+         "ci_lower_roc_auc", "ci_upper_roc_auc", "mode") %>%
+  setNames(c("Cancer type",	"Labeling type",	"Epsilon", "Min test ROC AUC",	"SD test ROC AUC",	"Median test ROC AUC",	"Mean test ROC AUC",	"Lower bound of confidence interval for mean test ROC AUC",	
+  "Upper bound of confidence interval for mean test ROC AUC", "PU learning mode")) %>%
+  mutate(Epsilon = as.numeric(Epsilon))
+
+rn3 <- roc_auc_rn %>%
+  inner_join(
+    rec_rn_3, by=c("Cancer type",	"Epsilon")
+  )
+rn5 <- roc_auc_rn %>%
+  inner_join(
+    rec_rn_5, by=c("Cancer type",	"Epsilon")
+  )
+# rp
+rec_rp_3 <- rec_rp[rec_rp$quantile_chr == "0.03", ] %>%
+  select(c("cancer_type", "eps", "mean_recall", "mean_lift_recall", "ci_lower_lift_recall",
+           "ci_upper_lift_recall",  "mean_precision","mean_lift_prec", "ci_lower_lift_prec", "ci_upper_lift_prec")) %>%
+  setNames(c("Cancer type",	"Epsilon", "Mean recall",	"Mean lift of recall",
+  "Lower bound of confidence interval for mean lift of recall",	"Upper bound of confidence interval for mean  lift of recall",
+  "Mean precision",	"Mean lift of precision",	"Lower bound of confidence interval for mean lift of precision",
+  "Upper bound of confidence interval for mean  lift of precision"))
+rec_rp_5 <- rec_rp[rec_rp$quantile_chr == "0.05", ] %>%
+  select(c("cancer_type", "eps", "mean_recall", "mean_lift_recall", "ci_lower_lift_recall",
+           "ci_upper_lift_recall",  "mean_precision","mean_lift_prec", "ci_lower_lift_prec", "ci_upper_lift_prec")) %>%
+  setNames(c("Cancer type",	"Epsilon", "Mean recall",	"Mean lift of recall",
+  "Lower bound of confidence interval for mean lift of recall",	"Upper bound of confidence interval for mean  lift of recall",
+  "Mean precision",	"Mean lift of precision",	"Lower bound of confidence interval for mean lift of precision",
+  "Upper bound of confidence interval for mean  lift of precision"))
+
+roc_auc_rp <- roc_auc_rp %>%
+  select("cancer_type", "agg_level", "eps", "min_roc_auc", "sd_roc_auc", "median_roc_auc", "mean_roc_auc",
+         "ci_lower_roc_auc", "ci_upper_roc_auc", "mode") %>%
+  setNames(c("Cancer type",	"Labeling type",	"Epsilon", "Min test ROC AUC",	"SD test ROC AUC",	"Median test ROC AUC",	"Mean test ROC AUC",	"Lower bound of confidence interval for mean test ROC AUC",	
+  "Upper bound of confidence interval for mean test ROC AUC", "PU learning mode")) %>%
+  mutate(Epsilon = as.numeric(Epsilon))
+
+rp3 <- roc_auc_rp %>%
+  inner_join(
+    rec_rp_3, by=c("Cancer type",	"Epsilon")
+  )
+rp5 <- roc_auc_rp %>%
+  inner_join(
+    rec_rp_5, by=c("Cancer type",	"Epsilon")
+  )
+
+all3 <- rp3 %>%
+  rbind.data.frame(rn3) %>%
+  arrange(`PU learning mode`,`Cancer type`,	`Labeling type`,	`Epsilon`)
+
+all5 <- rp5 %>%
+  rbind.data.frame(rn5) %>%
+  arrange(`PU learning mode`,`Cancer type`,	`Labeling type`,	`Epsilon`)
+
+wb <- createWorkbook()
+addWorksheet(wb, "all3")
+addWorksheet(wb, "all5")
+
+writeData(wb, sheet="all3", all3)
+writeData(wb, sheet="all5", all5)
+
+# saveWorkbook(wb, "../paper_materials/table11.xlsx", overwrite = T)
+
+```
+
+
+
+

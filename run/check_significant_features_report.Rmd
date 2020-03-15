@@ -192,3 +192,56 @@ final_feats <- rbind(best_features, feat_to_add)
 # saveWorkbook(wb, "../data/output/boruta_plus_sign_stats.xlsx", overwrite = T)
 
 ```
+
+
+PCA for cancer types
+
+```{r}
+best_features <- read.xlsx("../paper_materials/Additional file 1.xlsx", sheet = "Table S8")
+
+not_null_f <- best_features %>%
+  group_by(Feature) %>%
+  summarize(s = sum(Flag.Selected.Final)) %>% 
+  filter(s > 0)
+best_features <- best_features %>%
+  left_join(not_null_f) %>%
+  filter(!is.na(s))
+
+all_f <- dcast(best_features, Cancer.type ~ Feature, value.var = "Flag.Selected.Final")
+all_f[is.na(all_f)] <- 0
+row.names(all_f) <- all_f$Cancer.type
+all_f$Cancer.type <- NULL
+all_f_pca <- prcomp(all_f, center = F, scale. = F)
+summary(all_f_pca)
+comp <- all_f_pca$x
+df_comp <- as.data.frame(comp)
+df_comp$Cancer.type <- row.names(df_comp)
+ggplot(df_comp, aes(x=PC1, y=PC2))+
+  geom_point()+
+  geom_text(aes(label=Cancer.type), size=3, vjust=0, hjust=0)
+
+```
+
+```{r}
+best_features$Feature_clear <- gsub(best_features$Feature, pattern = "upper_", replacement = "")
+
+best_features_cleared <- best_features %>%
+  group_by(Cancer.type, Feature_clear) %>%
+  summarize(c = max(Flag.Selected.Final))
+
+all_f <- dcast(best_features_cleared, Cancer.type ~ Feature_clear, value.var = "c")
+all_f[is.na(all_f)] <- 0
+row.names(all_f) <- all_f$Cancer.type
+all_f$Cancer.type <- NULL
+all_f_pca <- prcomp(all_f, center = F, scale. = F)
+summary(all_f_pca)
+comp <- all_f_pca$x
+df_comp <- as.data.frame(comp)
+df_comp$Cancer.type <- row.names(df_comp)
+ggplot(df_comp, aes(x=PC1, y=PC2))+
+  geom_point()+
+  geom_text(aes(label=Cancer.type), size=3, vjust=0, hjust=0)
+cl <- hclust(dist(comp[, 1:6]))
+plclust(cl)
+```
+

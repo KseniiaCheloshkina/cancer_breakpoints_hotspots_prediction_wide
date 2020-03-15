@@ -5,14 +5,14 @@
 library(reshape2)
 library(ggplot2)
 library(dplyr)
-
+library(openxlsx)
 
 script_path <- dirname(rstudioapi::getSourceEditorContext()$path)
 setwd(script_path)
 setwd('..')
 
 # data
-input_folder <- "../cbp_data/data/breakpoints/raw_release_28/"
+input_folder <- "../cbp_data/data/raw breakpoints/raw_release_28/"
 setwd(input_folder)
 all_data <- read.csv("all_cancer_data.csv", row.names = 1)
 
@@ -322,7 +322,7 @@ eda_trans <- function(data) {
     data <- data[-bad_range, ]
   }
   
-  # REMOVE MT
+  # REMOVE MT, Y chromosome
   mt <- which(data$chr %in% c("MT", "Y"))
   if (length(mt) != 0) {
     data <- data[-mt, ]
@@ -354,6 +354,7 @@ for (i in cancer_types) {
 }
 
 
+
 data_summary <- all_data %>%
   group_by(cancer_type) %>%
   summarize(
@@ -362,3 +363,63 @@ data_summary <- all_data %>%
     n_var_types = n_distinct(variant_type),
     n_bkpt = n()
   )
+
+
+#### Data summary
+
+# raw
+setwd("../raw_release_28/")
+cancer_types <- list.files()
+cancer_types <- cancer_types[grep("_all_data.csv", cancer_types)]
+
+all_data <- data.frame()
+
+for (i in cancer_types) {
+  data <- read.csv(i)
+  nm <- strsplit(i, "_")[[1]][1]
+  data$cancer_type <- nm
+  all_data <- rbind(all_data, data)
+}
+
+raw_data_summary <- all_data %>%
+  group_by(cancer_type) %>%
+  summarize(
+    n_donors = n_distinct(icgc_donor_id),
+    n_samples = n_distinct(icgc_sample_id),
+    n_var_types = n_distinct(variant_type),
+    n_bkpt = n()
+  ) %>%
+  mutate(n_bkpt = n_bkpt * 2)
+
+
+# filtered
+setwd("../raw_release_28/after_preprocessing/")
+cancer_types <- list.files()
+cancer_types <- cancer_types[grep("_all_data.csv", cancer_types)]
+
+all_data <- data.frame()
+
+for (i in cancer_types) {
+  data <- read.csv(i)
+  nm <- strsplit(i, "_")[[1]][1]
+  data$cancer_type <- nm
+  all_data <- rbind(all_data, data)
+}
+
+filt_data_summary <- all_data %>%
+  group_by(cancer_type) %>%
+  summarize(
+    n_donors = n_distinct(icgc_donor_id),
+    n_samples = n_distinct(icgc_sample_id),
+    n_var_types = n_distinct(variant_type),
+    n_bkpt = n()
+  )
+# save
+wb <- createWorkbook()
+addWorksheet(wb, "raw data")
+addWorksheet(wb, "filtered data")
+ 
+writeData(wb, sheet="raw data", raw_data_summary)
+writeData(wb, sheet="filtered data", filt_data_summary)
+ 
+saveWorkbook(wb, "../breakpoints_summary.xlsx", overwrite = T)

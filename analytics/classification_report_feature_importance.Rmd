@@ -1,0 +1,829 @@
+---
+title: "Classification report"
+output:
+  html_notebook: default
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+```{r "loading data", echo=F}
+library(ggplot2)
+library(ggsci)
+library(wesanderson)
+library(ggpubr)
+
+library(dplyr)
+library(reshape2)
+
+
+
+library(openxlsx)
+
+win_len <- 100000
+
+data_path <- "../data/output/classifier_results_by_feature_group/" 
+roc_auc_data <- read.csv(paste0(data_path, "result_roc_auc_100000.csv"), row.names = 1, stringsAsFactors = F)
+roc_auc_data <- rbind(
+  roc_auc_data, 
+  read.csv(paste0(data_path, "result_roc_auc_100000_0.csv"), row.names = 1, stringsAsFactors = F)
+)
+roc_auc_data$agg_level[roc_auc_data$agg_level == '99'] <- '99.'
+recall_data <- read.csv(paste0(data_path, "result_recall_100000.csv"), row.names = 1, stringsAsFactors = F)
+recall_data <- rbind(
+  recall_data,
+  read.csv(paste0(data_path, "result_recall_100000_0.csv"), row.names = 1, stringsAsFactors = F)
+)
+recall_data$agg_level[recall_data$agg_level == '99'] <- '99.'
+ <- read.csv(paste0(data_path, "result_imp_100000.csv"), row.names = 1, stringsAsFactors = F)
+imp_data <- rbind(
+  imp_data,
+  read.csv(paste0(data_path, "result_imp_100000_0.csv"), row.names = 1, stringsAsFactors = F)
+)
+imp_data$agg_level[imp_data$agg_level == '99'] <- '99.'
+```
+
+### ROC AUC analysis
+
+Distribution of test ROC AUC for all cancer types by hotspots labeling
+```{r fig.height=10, fig.width=7}
+g1 <- ggplot(roc_auc_data, aes(x=agg_level, y=te_auc, fill=feat_group)) +
+  geom_boxplot()+
+  facet_wrap(~ cancer_type, nrow = 5) +
+  scale_fill_jco() + 
+  xlab("")+
+  ylab("Test ROC AUC")+
+  labs(fill = "Labeling type")+
+  theme(
+      text = element_text(size = 8, family = "arial"),
+      axis.title.x = element_text(size = 10),
+      axis.title.y = element_text(size = 10),
+      legend.position="bottom", legend.title = element_text(size = 10),
+    )
+g1
+```
+
+### Quality of clasifiers analysis
+
+Aggregated statistics for hotspots prediction by cancer type
+
+
+0.03
+
+```{r fig.width=10}
+recall_data$agg_level <- as.character(recall_data$agg_level)
+recall_data$quantile_chr <- as.character(recall_data$quantile)
+map_df <- data.frame(agg_level=c("99.", "99.5.", "99.9."), agg_level_num = c(0.01, 0.005, 0.001))
+
+recall_data <- recall_data %>%
+  inner_join(map_df)
+recall_data$lift_precision <- recall_data$precision / recall_data$agg_level_num
+
+comp_rec <- recall_data %>%
+  filter(quantile_chr == "0.03") 
+
+comp_rec_pl <- comp_rec %>%
+  select('cancer_type', 'agg_level', 'feat_group', 'lift_recall', 'lift_precision') %>%
+  melt(id.vars=c("cancer_type","agg_level", 'feat_group'))
+
+g3 <- ggplot(comp_rec_pl, aes(x=agg_level, y=value, fill=feat_group)) + 
+  geom_boxplot() + 
+  facet_grid(cancer_type~variable, scales = "free") + 
+  scale_fill_jco() + 
+  xlab("Cancer type")+
+  labs(fill = "Labeling type")+
+  theme(
+      text = element_text(size = 8, family = "arial"),
+      axis.title.x = element_text(size = 10),
+      axis.title.y = element_text(size = 10),
+      legend.position="bottom", legend.title = element_text(size = 10),
+    )
+g3
+```
+Confidence intervals for lift of recall / recall for different quantiles
+
+```{r}
+ci_stats <- recall_data %>%
+  group_by(cancer_type, agg_level, feat_group, quantile) %>%
+  summarize(
+    mean_recall = mean(recall),
+    mean_lift_recall = mean(lift_recall),
+    mean_precision = mean(precision),
+    mean_lift_precision = mean(lift_precision),
+    sd_recall = sd(recall),
+    sd_lift_recall = sd(lift_recall),
+    sd_precision = sd(precision),
+    sd_lift_precision = sd(lift_precision),
+    n_ex = n()
+  ) %>%
+  mutate(
+    ci_lower_recall = mean_recall - 1.96 * sd_recall / sqrt(n_ex),
+    ci_upper_recall = mean_recall + 1.96 * sd_recall / sqrt(n_ex),
+    
+    ci_lower_lift_recall = mean_lift_recall - 1.96 * sd_lift_recall / sqrt(n_ex),
+    ci_upper_lift_recall = mean_lift_recall + 1.96 * sd_lift_recall / sqrt(n_ex),    
+    
+    ci_lower_precision = mean_precision - 1.96 * sd_precision / sqrt(n_ex),
+    ci_upper_precision = mean_precision + 1.96 * sd_precision / sqrt(n_ex),       
+    
+    ci_lower_lift_precision = mean_lift_precision - 1.96 * sd_lift_precision / sqrt(n_ex),
+    ci_upper_lift_precision = mean_lift_precision + 1.96 * sd_lift_precision / sqrt(n_ex)
+  )
+
+```
+
+Lift of recall
+
+```{r fig.width=10}
+ggplot(ci_stats %>% filter(quantile <= 0.1), aes(x=quantile, y=mean_lift_recall, fill=feat_group)) + 
+  geom_ribbon(aes(ymin=ci_lower_lift_recall, ymax=ci_upper_lift_recall, fill=feat_group), alpha=0.8) + 
+  facet_grid(cancer_type~agg_level, scales = "free") + 
+  scale_fill_jco()
+```
+
+Lift of precision
+
+```{r fig.width=10}
+
+ggplot(ci_stats %>% filter(quantile <= 0.1), aes(x=quantile, y=mean_lift_precision, fill=feat_group)) + 
+  geom_ribbon(aes(ymin=ci_lower_lift_precision, ymax=ci_upper_lift_precision, fill=feat_group), alpha=0.8) + 
+  facet_grid(cancer_type~agg_level, scales = "free") + 
+  scale_fill_jco()
+```
+
+Mean lift of recall and confidence interval for mean lift of recall for 0.03 probability percentile
+```{r fig.height=10, fig.width=7}
+d <- ci_stats %>% filter(quantile == 0.03)
+ggplot(d, aes(x=agg_level, y=mean_lift_recall, fill=feat_group)) + 
+  geom_bar(stat="identity", color="black", 
+           position=position_dodge()) +
+  geom_errorbar(aes(ymin=ci_lower_lift_recall, ymax=ci_upper_lift_recall), width=.2,
+                 position=position_dodge(.9)) +
+  facet_wrap(~cancer_type, nrow = 5, scales = "free") + 
+  scale_fill_jco() + 
+  xlab("Labeling type")+
+  labs(fill = "Feature group")+
+  theme(
+      text = element_text(size = 8, family = "arial"),
+      axis.title.x = element_text(size = 10),
+      axis.title.y = element_text(size = 10),
+      legend.position="bottom", legend.title = element_text(size = 10),
+    )
+```
+
+Mean lift of precision and confidence interval for mean lift of precision for 0.03 probability percentile
+```{r fig.height=10, fig.width=7}
+d <- ci_stats %>% filter(quantile == 0.03)
+ggplot(d, aes(x=agg_level, y=mean_lift_precision, fill=feat_group)) + 
+  geom_bar(stat="identity", color="black", 
+           position=position_dodge()) +
+  geom_errorbar(aes(ymin=ci_lower_lift_precision, ymax=ci_upper_lift_precision), width=.2,
+                 position=position_dodge(.9)) +
+  facet_wrap(~cancer_type, nrow = 5, scales = "free") + 
+  scale_fill_jco() + 
+  xlab("Labeling type")+
+  labs(fill = "Feature group")+
+  theme(
+      text = element_text(size = 8, family = "arial"),
+      axis.title.x = element_text(size = 10),
+      axis.title.y = element_text(size = 10),
+      legend.position="bottom", legend.title = element_text(size = 10),
+    )
+```
+
+### Результаты
+
+Save intermediate results
+
+```{r echo=F}
+# roc auc
+roc_data <- roc_auc_data %>%
+  mutate(
+    train_test_diff = tr_auc - te_auc
+  ) %>%
+  group_by(cancer_type, agg_level, feat_group) %>%
+  summarize(
+    min_test_auc = min(te_auc),
+    sd_test_auc = sd(te_auc),
+    median_test_auc = median(te_auc),
+    mean_test_auc = mean(te_auc),
+    train_test_diff = mean(train_test_diff),
+    n_ex = n()
+  ) %>%
+  mutate(
+    ci_lower_roc_auc = mean_test_auc - 1.96 * sd_test_auc / sqrt(n_ex),
+    ci_upper_roc_auc = mean_test_auc + 1.96 * sd_test_auc / sqrt(n_ex), 
+  ) %>%
+  select(-n_ex)
+
+# recall
+recall_stats_hsp <- ci_stats %>% 
+  filter(quantile %in% c(0.001, 0.005, 0.01,0.02,0.03, 0.040, 0.050, 0.100)) %>%
+  select(cancer_type, agg_level, feat_group, quantile, mean_recall, mean_precision, mean_lift_recall, ci_lower_lift_recall, ci_upper_lift_recall, mean_lift_precision, ci_lower_lift_precision,ci_upper_lift_precision)
+
+# save
+# wb <- createWorkbook()
+# addWorksheet(wb, "ROC_AUC")
+# addWorksheet(wb, "Recall")
+# writeData(wb, sheet="ROC_AUC", roc_data)
+# writeData(wb, sheet="Recall", recall_stats_hsp)
+# saveWorkbook(wb, "../reports/train_by_feature_group.xlsx", overwrite = T)
+```
+
+#### ROC AUC
+Для brain, breast, ovary, pancreatic, prostate, uterus есть хотя бы одна группа признаков, модели на основе которой имеют минимальный тестовый ROC AUC более 0,6. 
+
+```{r}
+min_60 <- roc_data %>%
+  filter(min_test_auc > 0.6)
+min_60
+```
+
+Среди них медианный тестовый ROC AUC более 0,7 имеют pancreatic и breast. Для pancreatic это модели для 99,9 уровня агрегации на признаках группы геномных регионов, для breast - вторичные структуры (для всех 3х уровней агрегации хотспотов), а также метилирование, открытость хроматина, модификации гистонов, регионы для 99,9 уровня агрегации. 
+```{r}
+min_60 %>%
+  filter(median_test_auc > 0.7)
+```
+
+По каждому типу рака best performing feature group по median_test_auc
+```{r}
+best_median_roc_groups <- roc_data %>%
+  group_by(cancer_type) %>%
+  filter(median_test_auc == max(median_test_auc))
+best_median_roc_groups
+```
+По каждому типу рака best performing feature group по min_test_auc
+```{r}
+best_min_roc_groups <-roc_data %>%
+  group_by(cancer_type) %>%
+  filter(min_test_auc == max(min_test_auc))
+best_min_roc_groups
+```
+В 7 из 10 случаев - вторичные структуры
+
+Для каждой feature group best performing cancer types - breast, ovary, pancreatic. Для TAD - все плохо (мин и медиана 0,5), для вторичных структур, хроматина минимальные -  0,73 и 0,78, а медианные - 0,82 и 0,88 (для breast). Для остальных групп признаков минимальный от 0,62 до 0,65, медианный - от 0,66 до 0,80. 
+
+```{r}
+roc_data %>%
+  group_by(feat_group) %>%
+  filter(min_test_auc == max(min_test_auc))
+```
+
+
+
+
+#### Lift of precision / recall
+
+По каждому типу рака best performing feature group по mean_lift_recall для 0,03 probability quantile
+```{r}
+recall_stats_hsp %>%
+  filter(quantile == 0.03) %>%
+  group_by(cancer_type) %>%
+  filter(mean_lift_recall == max(mean_lift_recall))
+```
+
+По каждому типу рака best performing feature group по mean_lift_precision для 0,03 probability quantile
+```{r}
+recall_stats_hsp %>%
+  filter(quantile == 0.03) %>%
+  group_by(cancer_type) %>%
+  filter(mean_lift_precision == max(mean_lift_precision))
+```
+Одинаковые группы признаков для mean_lift_recall и mean_lift_precision. Для 4 типов рака (liver, ovary, prostate, skin) группы признаков, обладающие максимальной предсказательной силой - транскрипционные факторы, для blood, brain - вторичные структуры, для bone, uterus - хроматин, для breast - модификации гистонов, для pancreatic - регионы.
+Максимальный средний lift of recall - для pancreatic (16.7) и breast (8.3), минимальное - для skin (2.9), для остальных типов рака - от 4,5 до 6,5
+
+```{r}
+best_recall_groups <- recall_stats_hsp %>%
+  filter(quantile %in% c(0.03, 0.05)) %>%
+  group_by(cancer_type, quantile) %>%
+  filter(mean_lift_recall == max(mean_lift_recall))
+
+```
+
+Для каждой feature group best performing cancer types по mean_lift_recall для 0,03 probability quantile. Для TAD - самый худший результат
+```{r}
+recall_stats_hsp %>%
+  filter(quantile == 0.03) %>%
+  group_by(feat_group) %>%
+  filter(mean_lift_recall == max(mean_lift_recall))
+```
+Для каждой feature group worst performing cancer types по mean_lift_recall для 0,03 probability quantile: для всех групп признаков найдется тип рака с mean_lift_recall < 1
+
+```{r}
+recall_stats_hsp %>%
+  filter(quantile == 0.03) %>%
+  group_by(feat_group) %>%
+  filter(mean_lift_recall == min(mean_lift_recall))
+```
+
+### Сравнение с моделями для всех групп признаков
+#### ROC AUC
+
+```{r}
+baseline_path <- '../reports/train_baseline.xlsx'
+base_roc <- read.xlsx(baseline_path, sheet = "ROC_AUC_hotspots")
+base_rec <- read.xlsx(baseline_path, sheet = "Recall_hotspots")
+names(base_roc)[grep(x=names(base_roc), pattern = "auc")] <- paste0('base_', grep(x=names(base_roc), pattern = "auc", value = T))
+names(base_roc)[grep(x=names(base_roc), pattern = "diff")] <- paste0('base_', grep(x=names(base_roc), pattern = "diff", value = T))
+names(base_rec)[grep(x=names(base_rec), pattern = "recall")] <- paste0('base_', 
+                                                                       grep(x=names(base_rec), pattern = "recall", value = T))
+names(base_rec)[grep(x=names(base_rec), pattern = "prec")] <- paste0('base_', 
+                                                                       grep(x=names(base_rec), pattern = "prec", value = T))
+
+best_path <- '../reports/train_best_features_boruta_sign.xlsx'
+best_roc <- read.xlsx(best_path, sheet = "ROC_AUC_hotspots")
+best_rec <- read.xlsx(best_path, sheet = "Recall_hotspots")
+names(best_roc)[grep(x=names(best_roc), pattern = "auc")] <- paste0('best_', grep(x=names(best_roc), pattern = "auc", value = T))
+names(best_roc)[grep(x=names(best_roc), pattern = "diff")] <- paste0('best_', grep(x=names(best_roc), pattern = "diff", value = T))
+names(best_rec)[grep(x=names(best_rec), pattern = "recall")] <- paste0('best_', 
+                                                                       grep(x=names(best_rec), pattern = "recall", value = T))
+names(best_rec)[grep(x=names(best_rec), pattern = "prec")] <- paste0('best_', 
+                                                                       grep(x=names(best_rec), pattern = "prec", value = T))
+```
+Берем максимальный Median test AUC для одной группы признаков и сравниваем для этого же уровня агрегации с качеством на всех признаках 
+```{r}
+comp_best_roc_med <- best_median_roc_groups %>%
+  inner_join(
+    base_roc, by=c("cancer_type", "agg_level")
+  ) %>%
+  select(cancer_type, agg_level, feat_group, median_test_auc, base_median_test_auc, min_test_auc, base_min_test_auc)
+comp_best_roc_med
+```
+
+Берем максимальный Min test AUC для одной группы признаков и сравниваем для этого же уровня агрегации с качеством на всех признаках 
+```{r}
+comp_best_roc_min <- best_min_roc_groups %>%
+  inner_join(
+    base_roc, by=c("cancer_type", "agg_level")
+  ) %>%
+  select(cancer_type, agg_level, feat_group, min_test_auc, base_min_test_auc, median_test_auc, base_median_test_auc)
+comp_best_roc_min
+```
+Возьмем максимальный median test ROC AUC для моделей на всех признаках и сравним с максимальным median test ROC AUC для одной группы признаков и для лучших отобранных из всех признаков (без учета уровня агрегации)
+```{r}
+comp_best_base_roc <- base_roc %>%
+  group_by(cancer_type) %>%
+  filter(base_median_test_auc == max(base_median_test_auc)) %>%
+  select(cancer_type, base_min_test_auc, base_median_test_auc) %>%
+  inner_join(
+    best_median_roc_groups %>% select(cancer_type,  min_test_auc, median_test_auc), by=c("cancer_type")
+  ) %>%
+  inner_join(
+    best_roc %>% select(cancer_type, best_min_test_auc, best_median_test_auc), by=c("cancer_type")
+  ) %>%
+  mutate(
+    median_base_minus_one = round(base_median_test_auc - median_test_auc, 2),
+    median_best_minus_one = round(best_median_test_auc - median_test_auc, 2),
+    min_base_minus_one = round(base_min_test_auc - min_test_auc, 2),
+    min_best_minus_one = round(best_min_test_auc - min_test_auc, 2)
+  )
+comp_best_base_roc
+```
+В среднем по всем типам рака
+```{r}
+comp_best_base_roc %>%
+  ungroup() %>%
+  summarize(
+    mean_med_base = mean(median_base_minus_one),
+    mean_med_best = mean(median_best_minus_one),
+    mean_min_base = mean(min_base_minus_one),
+    mean_min_best = mean(min_best_minus_one)
+  )
+```
+
+
+
+#### Lift of recall / precision for 0.03 probability quantile
+Берем максимальный mean lift of recall для одной группы признаков и сравниваем для этого же уровня агрегации с качеством на всех признаках 
+```{r}
+comp_best_rec <- best_recall_groups %>%
+  ungroup() %>%
+  filter(quantile == 0.03) %>%
+  inner_join(
+    base_rec, by=c("cancer_type", "agg_level", "quantile")
+  ) %>%
+  select(cancer_type, agg_level, feat_group, base_mean_lift_recall, mean_lift_recall, base_mean_lift_precision, mean_lift_precision)
+comp_best_rec
+```
+Возьмем максимальный mean lift of recall для моделей на всех признаках и сравним с максимальным mean lift of recall для одной группы признаков (без учета уровня агрегации)
+
+```{r}
+comp_best_base_rec <- base_rec %>%
+  filter(quantile == 0.03) %>%
+  group_by(cancer_type) %>%
+  filter(base_mean_lift_recall == max(base_mean_lift_recall)) %>%
+  select(cancer_type, base_mean_lift_recall, base_mean_lift_precision) %>%
+  inner_join(
+    best_recall_groups %>% 
+      ungroup() %>%
+      filter(quantile == 0.03) %>%
+      select(cancer_type, mean_lift_recall, mean_lift_precision), by=c("cancer_type")
+  ) %>%
+  inner_join(
+    best_rec %>% 
+      filter(quantile == 0.03) %>%
+      select(cancer_type, best_mean_lift_recall, best_mean_lift_precision), by=c("cancer_type")
+  ) %>%
+  mutate(
+    lift_recall_base_minus_one = round(base_mean_lift_recall - mean_lift_recall, 2),
+    lift_recall_best_minus_one = round(best_mean_lift_recall - mean_lift_recall, 2),
+    lift_precision_base_minus_one = round(base_mean_lift_precision - mean_lift_precision, 2),
+    lift_precision_best_minus_one = round(best_mean_lift_precision - mean_lift_precision, 2)
+  )
+comp_best_base_rec
+```
+В среднем по всем типам рака
+```{r}
+comp_best_base_rec %>%
+  ungroup() %>%
+  summarize(
+    mean_rec_base = mean(lift_recall_base_minus_one),
+    mean_rec_best = mean(lift_recall_best_minus_one),
+    mean_prec_base = mean(lift_precision_base_minus_one),
+    mean_prec_best = mean(lift_precision_best_minus_one)
+  )
+```
+
+#### Lift of recall / precision for 0.05 probability quantile
+Берем максимальный mean lift of recall для одной группы признаков и сравниваем для этого же уровня агрегации с качеством на всех признаках 
+```{r}
+comp_best_rec <- best_recall_groups %>%
+  ungroup() %>%
+  filter(quantile == 0.05) %>%
+  inner_join(
+    base_rec, by=c("cancer_type", "agg_level", "quantile")
+  ) %>%
+  select(cancer_type, agg_level, feat_group, base_mean_lift_recall, mean_lift_recall, base_mean_lift_precision, mean_lift_precision)
+comp_best_rec
+```
+Возьмем максимальный mean lift of recall для моделей на всех признаках и сравним с максимальным mean lift of recall для одной группы признаков (без учета уровня агрегации)
+
+```{r}
+comp_best_base_rec <- base_rec %>%
+  filter(quantile == 0.05) %>%
+  group_by(cancer_type) %>%
+  filter(base_mean_lift_recall == max(base_mean_lift_recall)) %>%
+  select(cancer_type, base_mean_lift_recall, base_mean_lift_precision) %>%
+  inner_join(
+    best_recall_groups %>% 
+      ungroup() %>%
+      filter(quantile == 0.05) %>%
+      select(cancer_type, mean_lift_recall, mean_lift_precision), by=c("cancer_type")
+  ) %>%
+  inner_join(
+    best_rec %>%
+      filter(quantile == 0.05) %>%
+      select(cancer_type, best_mean_lift_recall, best_mean_lift_precision), by=c("cancer_type")
+  ) %>%
+  mutate(
+    lift_recall_base_minus_one = round(base_mean_lift_recall - mean_lift_recall, 2),
+    lift_recall_best_minus_one = round(best_mean_lift_recall - mean_lift_recall, 2),
+    lift_precision_base_minus_one = round(base_mean_lift_precision - mean_lift_precision, 2),
+    lift_precision_best_minus_one = round(best_mean_lift_precision - mean_lift_precision, 2)
+  )
+comp_best_base_rec
+```
+В среднем по всем типам рака
+```{r}
+comp_best_base_rec %>%
+  ungroup() %>%
+  summarize(
+    mean_rec_base = mean(lift_recall_base_minus_one),
+    mean_rec_best = mean(lift_recall_best_minus_one),
+    mean_prec_base = mean(lift_precision_base_minus_one),
+    mean_prec_best = mean(lift_precision_best_minus_one)
+  )
+```
+
+> Не учитывая уровень агрегации хотспотов можно сделать такие выводы. При сравнении метрик качества для лучших признаков (отобранных из всех групп) и для одной лучшей группы признаков:
+
+> 1. По median ROC AUC первый упомянутый тип модели отличается от второго на величину от -0,11 (для skin) до +0,01; для min ROC AUC - от -0,05 (для bone) до +0,10 (для ovary). В среднем по всем типам рака разница между первым типом моделей и вторым - это -0,03 median test ROC AUC и 0,02 min test ROC AUC.
+
+> 2. При сравнении lift of recall было замечено, что:
+> * Для 0,03 probability quantile первый упомянутый тип модели превосходит второй тип модели на 1,3 пп. для liver и уступает на 2,3 пп. для breast, в то время как для остальных типов рака разница варьируется от -0,75 до +0,74.  Данные закономерности наблюдаются и для lift of precision. В среднем по всем типам рака разница между первым типом моделей и вторым - это -0.17 lift of recall и -0,15 lift of precision.
+> * Для 0,05 probability quantile первый упомянутый тип модели превосходит второй тип модели для всех типов рака (кроме breast и skin -0,45 и -0,3 соответственно) и варьируется в диапазоне от 0 (для pancreatic) до +1,58 (для liver). Данные закономерности наблюдаются и для lift of precision. В среднем по всем типам рака разница между первым типом моделей и вторым - это +0.28 lift of recall и 0,28 lift of precision.
+> 3. Также стоит отметить, что для двух типов рака, для которых из всех признаков в качестве лучших были выбраны признаки одной группы - brain и liver - максимальное качество при построении моделей только на одной группе признаков наблюдается именно для тех же групп признаков. Также для pancreatic cancer, для которого в набор лучших признаков входит много признаков регионов генома и 1 транскприпционный фактор, максимальное качество при построении моделей на 1 группе признаков также наблюдается для этой группы признаков.
+
+
+Для каждого типа рака выбираем уровень агрегации хотспотов,для которого достигается максимальный mean lift of recall для модели, построенной на любой из групп. Далее для каждого типа рака и выбранного уровня агрегации смотрим на топ-3 performing группы признаков и сравниваем их качество с качеством моделей на лучших признаках (отобранных из всех).
+
+```{r fig.width=10}
+top_recall_groups <- recall_stats_hsp %>%
+  filter(quantile == 0.03) %>%
+  inner_join(
+    best_recall_groups %>% select(cancer_type, agg_level, quantile), by=c("cancer_type", "agg_level", "quantile")
+  ) %>%
+  group_by(cancer_type) %>%
+  mutate(rank_mean_lift_recall = dense_rank(desc(mean_lift_recall))) %>%
+  filter(rank_mean_lift_recall <= 3) %>%
+  inner_join(
+    roc_data, by=c('cancer_type', 'agg_level', 'feat_group')
+  ) %>%
+  group_by(cancer_type, quantile, rank_mean_lift_recall) %>%
+  filter(median_test_auc == max(median_test_auc)) %>%
+  ungroup() %>%
+  select(cancer_type, feat_group, mean_lift_recall, median_test_auc)
+
+best_tot <- best_roc %>%
+  select(cancer_type, agg_level, best_median_test_auc) %>%
+  inner_join(
+    best_rec %>% 
+      filter(quantile == 0.03) %>%
+      select(cancer_type, agg_level, best_mean_lift_recall), 
+    by=c("cancer_type", "agg_level")
+  ) %>%
+  mutate(feat_group = "best_features") %>%
+  select(cancer_type, feat_group, best_median_test_auc, best_mean_lift_recall) %>%
+  setNames(c("cancer_type", "feat_group", "median_test_auc", "mean_lift_recall"))
+
+data_plot <- rbind(
+  top_recall_groups,
+  best_tot
+) %>%
+  melt(id.vars = c("cancer_type", "feat_group"))
+
+ggplot(data_plot, aes(x=feat_group, y=value, fill=feat_group)) + 
+  facet_grid(variable ~ cancer_type, scales = "free") + 
+  geom_bar(stat="identity", color="black") + 
+  scale_fill_jco() + 
+  xlab("Feature group")+
+  ylab("Metric value") +
+  theme(
+    text = element_text(size = 8, family = "arial"),
+    axis.title.x = element_text(size = 10),
+    axis.title.y = element_text(size = 10),
+    axis.text.y = element_text(hjust = 1),
+    axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+    legend.position="bottom", legend.title = element_text(size = 10),
+    ) +
+  labs(fill = "Feature group")
+  
+```
+> Судя по mean lift of recall:
+
+> 1. For all cancer types it is sufficient to use one best performing feature group. Besides, for breast cancer it is not only sufficient but also better to use only one group of features as it improves quality. On the other hand, for liver cancer using only best selected 4 transcription factors features leads to higher quality than using all features of the group. This effect is also obeserved for brain cancer with less quality difference.
+
+> 2. Comparing quality of models based on different feature groups it could be noted that for skin, uterus and blood cancer top-3 performing feature groups demonstrate similar models quality while for the rest cancer types there is one feature group that significantly outperforms others, especially for pancreatic cancer.
+
+
+Добавляем в paper tables по одному столбцу: для каждого типа рака фиксируем уровень агрегации, при котором для какой-то группы признаков достигается максимальный median lift of recall, далее для каждого типа рака находится median test ROC AUC, соответствующий выбранному уровню агрегации и группе признаков. 
+```{r}
+paper_table1 <- read.xlsx("../paper_materials/Tables.xlsx", sheet = "Table 1")
+paper_table2 <- read.xlsx("../paper_materials/Tables.xlsx", sheet = "Table 2")
+
+res <- recall_data %>%
+  filter(quantile == 0.03) %>%
+  select("cancer_type", "agg_level", "feat_group","lift_recall","lift_precision") %>%
+  group_by(cancer_type, agg_level, feat_group) %>%
+  summarize(
+    median_lift_recall = median(lift_recall),
+    mean_lift_recall = mean(lift_recall),
+  ) %>%
+  group_by(cancer_type) %>%
+  filter(
+    median_lift_recall == max(median_lift_recall)
+  ) %>%
+  filter(
+    mean_lift_recall == max(mean_lift_recall)
+  ) %>%
+  inner_join(
+    roc_data %>% select(cancer_type, agg_level, feat_group, median_test_auc), by=c("cancer_type", "agg_level","feat_group")
+  )
+
+res_auc <- res %>%
+  select(cancer_type, median_test_auc) %>%
+  setNames(c("Cancer.type", "Best.hotspots.by.one.feature.group"))
+paper_table1 <- paper_table1 %>%
+  inner_join(
+    res_auc, by=c("Cancer.type")
+  )
+
+res_rec <- res %>%
+  select(cancer_type, median_lift_recall) %>%
+  setNames(c("Cancer.type", "Best.hotspots.by.one.feature.group"))
+paper_table2 <- paper_table2 %>%
+  inner_join(
+    res_rec, by=c("Cancer.type")
+  )
+wb <- createWorkbook()
+addWorksheet(wb, "Table 1")
+addWorksheet(wb, "Table 2")
+
+writeData(wb, sheet="Table 1", paper_table1)
+writeData(wb, sheet="Table 2", paper_table2)
+
+# saveWorkbook(wb, "../paper_materials/Tables.xlsx", overwrite = T)
+```
+
+
+### Feature importance inside groups
+
+```{r fig.width=10}
+
+pl_d <- imp_data %>% 
+  filter(agg_level == '99.9.')
+most_imp <- pl_d %>%
+  group_by(cancer_type, feat_group, feature) %>%
+  summarize(
+    med_imp = median(importance)
+  ) %>%
+  group_by(cancer_type, feat_group) %>%  
+  mutate(
+    rank_med_imp = dense_rank(desc(med_imp))
+  ) %>%
+  filter(rank_med_imp <= 5)
+pl_d <- pl_d %>%
+  inner_join(
+    most_imp, by=c('cancer_type', 'feat_group', 'feature')
+  )
+ggplot(pl_d[pl_d$feat_group == 'sec_str', ], aes(x=feature, y=importance, fill=feature)) + 
+  facet_wrap(~ cancer_type, ncol = 5, scales="free") + 
+  geom_boxplot() + 
+  scale_fill_jco() + 
+  xlab("Feature")+
+  ylab("Importance") +
+  theme(
+    text = element_text(size = 8, family = "arial"),
+    axis.title.x = element_text(size = 10),
+    axis.title.y = element_text(size = 10),
+    axis.text.y = element_text(hjust = 1),
+    axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+    legend.position="bottom", legend.title = element_text(size = 10),
+    ) +
+  labs(fill = "Seecondary structures features")
+```
+```{r fig.width=10}
+ggplot(pl_d[pl_d$feat_group == 'reg', ], aes(x=feature, y=importance)) + 
+  facet_wrap(~ cancer_type, ncol = 5, scales="free") + 
+  geom_boxplot() + 
+  xlab("Feature")+
+  ylab("Importance") +
+  theme(
+    text = element_text(size = 8, family = "arial"),
+    axis.title.x = element_text(size = 10),
+    axis.title.y = element_text(size = 10),
+    axis.text.y = element_text(hjust = 1),
+    axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+    legend.position="bottom", legend.title = element_text(size = 10),
+    )
+```
+
+
+```{r fig.width=12}
+ggplot(pl_d[pl_d$feat_group == 'tf', ], aes(x=feature, y=importance)) + 
+  facet_wrap(~ cancer_type, ncol = 5, scales="free") + 
+  geom_boxplot() + 
+  xlab("Feature")+
+  ylab("Importance") +
+  theme(
+    text = element_text(size = 8, family = "arial"),
+    axis.title.x = element_text(size = 10),
+    axis.title.y = element_text(size = 10),
+    axis.text.y = element_text(hjust = 1),
+    axis.text.x = element_text(angle = 70, vjust = 1, hjust = 1),
+    legend.position="bottom", legend.title = element_text(size = 10),
+    )
+```
+
+Best by mean lift of recall feature group for all agg_levels
+
+```{r fig.height=20, fig.width=10, message=FALSE}
+best_fg <- recall_data %>%
+  filter(quantile == 0.03) %>%
+  select("cancer_type", "feat_group","lift_recall") %>%
+  group_by(cancer_type, feat_group) %>%
+  summarize(
+    mean_lift_recall = mean(lift_recall),
+  ) %>%
+  group_by(cancer_type) %>%
+  filter(
+    mean_lift_recall == max(mean_lift_recall)
+  ) %>%
+  ungroup() %>%
+  select(-mean_lift_recall)
+
+pl_data <- imp_data %>%
+  inner_join(
+    best_fg, by=names(best_fg)
+  )
+most_imp <- pl_data %>%
+  group_by(cancer_type, agg_level, feat_group, feature) %>%
+  summarize(
+    med_imp = median(importance)
+  ) %>%
+  group_by(cancer_type, agg_level, feat_group) %>%  
+  mutate(
+    rank_med_imp = dense_rank(desc(med_imp))
+  ) %>%
+  filter(rank_med_imp <= 5)
+pl_data <- pl_data %>%
+  inner_join(
+    most_imp, by=c('cancer_type', 'agg_level', 'feat_group', 'feature')
+  )
+
+canc_type <- unique(pl_data$cancer_type)
+
+g <- list()
+for (c in c("blood", "bone", "brain", "breast", "liver")){
+  g[[c]] <- ggplot(pl_data[pl_data$cancer_type == c, ], aes(x=agg_level, y=importance, fill=feature)) + 
+  scale_fill_jco() + 
+  facet_wrap(~ cancer_type, ncol = 1, scales="free") + 
+  geom_boxplot() +
+  xlab("Labeling type")+
+  ylab("Importance") +
+  theme(
+    text = element_text(size = 8, family = "arial"),
+    axis.title.x = element_text(size = 10),
+    axis.title.y = element_text(size = 10),
+    axis.text.y = element_text(hjust = 1),
+    legend.position="bottom", legend.title = element_text(size = 10),
+    legend.text = element_text(size=8, margin = margin(0, 0.3, 0, 0, "inches"))
+    )
+}
+g_f <- ggarrange(g[[canc_type[1]]], g[[canc_type[2]]], g[[canc_type[3]]], g[[canc_type[4]]], g[[canc_type[5]]], 
+          labels = c("A", "B", "C", "D", "E"),
+          ncol = 1, nrow = 5, 
+          font.label = list(size = 10, color = "black", face ="bold"))
+# ggsave(filename = "test1.tiff", plot = g_f, device = "tiff", path = "../paper_materials/supplementary figures/",
+#        dpi = 600, units = "in", width = 6, height = 6, scale = 2, compression = "lzw")
+
+g <- list()
+for (c in c("ovary", "pancreatic", "prostate", "skin", "uterus")){
+  g[[c]] <- ggplot(pl_data[pl_data$cancer_type == c, ], aes(x=agg_level, y=importance, fill=feature)) + 
+  scale_fill_jco() + 
+  facet_wrap(~ cancer_type, ncol = 1, scales="free") + 
+  geom_boxplot() +
+  # guides(fill=guide_legend(ncol=2)) +
+  xlab("Labeling type")+
+  ylab("Importance") +
+  theme(
+    text = element_text(size = 8, family = "arial"),
+    axis.title.x = element_text(size = 10),
+    axis.title.y = element_text(size = 10),
+    axis.text.y = element_text(hjust = 1),
+    legend.position="bottom", legend.title = element_text(size = 10),
+    legend.text = element_text(size=8, margin = margin(0, 0.3, 0, 0, "inches"))
+    )
+}
+g_f <- ggarrange(g[[canc_type[6]]], g[[canc_type[7]]], g[[canc_type[8]]], g[[canc_type[9]]], g[[canc_type[10]]], 
+          labels = c("A", "B", "C", "D", "E"),
+          ncol = 1, nrow = 5, 
+          font.label = list(size = 10, color = "black", face ="bold"))
+# ggsave(filename = "test2.tiff", plot = g_f, device = "tiff", path = "../paper_materials/supplementary figures/",
+#        dpi = 600, units = "in", width = 6, height = 6, scale = 2, compression = "lzw")
+
+```
+
+
+
+
+
+### Save paper tables
+```{r}
+roc <- roc_data %>%
+  select("cancer_type", "agg_level", "feat_group", "min_test_auc", "sd_test_auc", "median_test_auc", "mean_test_auc",
+         "train_test_diff", "ci_lower_roc_auc", "ci_upper_roc_auc") %>%
+  setNames(c("Cancer type",	"Labeling type", "Feature group", "Min test ROC AUC",	"SD test ROC AUC",	"Median test ROC AUC",	
+             "Mean test ROC AUC", "Train-test difference ROC AUC", "Lower bound of confidence interval for mean test ROC AUC",	
+             "Upper bound of confidence interval for mean test ROC AUC"))
+
+rec_3 <- recall_stats_hsp[recall_stats_hsp$quantile == 0.03, ] %>%
+  select(c("cancer_type", "agg_level", "feat_group","mean_recall", "mean_lift_recall", "ci_lower_lift_recall",
+           "ci_upper_lift_recall",  "mean_precision","mean_lift_precision", "ci_lower_lift_precision", 
+           "ci_upper_lift_precision")) %>%
+  setNames(c("Cancer type",		"Labeling type","Feature group", "Mean recall",	"Mean lift of recall",
+  "Lower bound of confidence interval for mean lift of recall",	"Upper bound of confidence interval for mean  lift of recall",
+  "Mean precision",	"Mean lift of precision",	"Lower bound of confidence interval for mean lift of precision",
+  "Upper bound of confidence interval for mean  lift of precision"))
+
+rec_5 <- recall_stats_hsp[recall_stats_hsp$quantile == 0.05, ] %>%
+  select(c("cancer_type", "agg_level", "feat_group","mean_recall", "mean_lift_recall", "ci_lower_lift_recall",
+           "ci_upper_lift_recall",  "mean_precision","mean_lift_precision", "ci_lower_lift_precision", 
+           "ci_upper_lift_precision")) %>%
+  setNames(c("Cancer type",		"Labeling type","Feature group", "Mean recall",	"Mean lift of recall",
+  "Lower bound of confidence interval for mean lift of recall",	"Upper bound of confidence interval for mean  lift of recall",
+  "Mean precision",	"Mean lift of precision",	"Lower bound of confidence interval for mean lift of precision",
+  "Upper bound of confidence interval for mean  lift of precision"))
+
+q3 <- roc %>%
+  inner_join(
+    rec_3, by=c("Cancer type","Labeling type", "Feature group")
+  )
+q5 <- roc %>%
+  inner_join(
+    rec_5, by=c("Cancer type", "Labeling type", "Feature group")
+  )
+
+# save
+
+# wb <- createWorkbook()
+# addWorksheet(wb, "q3")
+# addWorksheet(wb, "q5")
+# 
+# writeData(wb, sheet="q3", q3)
+# writeData(wb, sheet="q5", q5)
+
+# saveWorkbook(wb, "../paper_materials/table14.xlsx", overwrite = T)
+
+```
+

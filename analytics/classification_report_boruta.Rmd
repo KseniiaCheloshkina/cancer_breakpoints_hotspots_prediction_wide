@@ -1,0 +1,357 @@
+---
+title: "Classification report"
+output:
+  html_notebook: default
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+```{r "loading data", echo=F}
+library(ggplot2)
+library(ggsci)
+library(wesanderson)
+library("ggdendro")
+
+library(dplyr)
+library(reshape2)
+
+library(formattable)
+
+library(openxlsx)
+
+
+win_len <- 100000
+data_path <- "../data/output/classifier_results_best_features/"
+roc_auc_data <- read.csv(paste0(data_path, "result_roc_auc_100000.csv"), row.names = 1, stringsAsFactors = F)
+recall_data <- read.csv(paste0(data_path, "result_recall_100000.csv"), row.names = 1, stringsAsFactors = F)
+imp_data <- read.csv(paste0(data_path, "result_imp_100000.csv"), row.names = 1, stringsAsFactors = F)
+
+```
+
+### ROC AUC analysis
+
+```{r}
+all_features_data <- roc_auc_data
+
+
+roc_auc_cancer_stats <- all_features_data %>%
+  group_by(cancer_type) %>%
+  summarize(
+    min_test_auc = min(te_auc),
+    sd_test_auc = sd(te_auc),
+    test_auc = median(te_auc),
+    test_auc_mean = mean(te_auc),
+    n_auc = n(),
+    train_auc = median(tr_auc)
+  )
+
+roc_auc_cancer_stats %>% 
+  arrange(min_test_auc)
+```
+
+
+```{r fig.width=10}
+ggplot(all_features_data, aes(te_auc)) +
+  geom_density(alpha=0.5)+
+  facet_wrap(~ cancer_type, nrow = 2)
+```
+
+Difference between train and test
+
+```{r fig.width=10}
+all_features_data$diff_auc <- all_features_data$tr_auc - all_features_data$te_auc
+ggplot(all_features_data, aes(diff_auc)) +
+  geom_density(alpha=0.5)+
+  facet_wrap(~ cancer_type, nrow = 2) 
+```
+
+```{r echo=F}
+by_hspt <- all_features_data %>%
+  mutate(
+    train_test_diff = tr_auc - te_auc
+  ) %>%
+  group_by(cancer_type, agg_level) %>%
+  summarize(
+    min_test_auc = min(te_auc),
+    sd_test_auc = sd(te_auc),
+    test_auc = median(te_auc),
+    test_auc_mean = mean(te_auc),
+    train_test_diff = mean(train_test_diff)
+  ) 
+```
+
+### Quality of clasifiers analysis
+
+Aggregated statistics for hotspots prediction by cancer type
+
+Recall
+
+```{r fig.width=10}
+all_features_data <- recall_data
+
+all_features_data$agg_level <- as.character(all_features_data$agg_level)
+all_features_data$quantile_chr <- as.character(all_features_data$quantile)
+
+q <- unique(all_features_data$quantile_chr)
+```
+
+One panel for different probability quantiles
+
+0.01
+
+```{r fig.width=10}
+map_df <- data.frame(agg_level=c("99.", "99.5.", "99.9."), agg_level_num = c(0.01, 0.005, 0.001))
+all_features_data <- all_features_data %>%
+  inner_join(map_df)
+all_features_data$lift_precision <- all_features_data$precision / all_features_data$agg_level_num
+comp_rec <- all_features_data %>%
+  filter(quantile_chr == "0.01") 
+
+comp_rec_pl <- comp_rec %>%
+  select('cancer_type', 'agg_level', 'lift_recall', 'lift_precision') %>%
+  melt(id.vars=c("cancer_type","agg_level"))
+
+ggplot(comp_rec_pl, aes(x=cancer_type, y=value, fill=agg_level)) + 
+  geom_boxplot() + 
+  facet_wrap(~variable, scales = "free", nrow = 4) + 
+  scale_fill_jco()
+```
+
+0.03
+
+```{r fig.width=10}
+comp_rec <- all_features_data %>%
+  filter(quantile_chr == "0.03") 
+
+comp_rec_pl <- comp_rec %>%
+  select('cancer_type', 'agg_level', 'lift_recall', 'lift_precision') %>%
+  melt(id.vars=c("cancer_type","agg_level"))
+
+ggplot(comp_rec_pl, aes(x=cancer_type, y=value, fill=agg_level)) + 
+  geom_boxplot() + 
+  facet_wrap(~variable, scales = "free", nrow = 4) + 
+  scale_fill_jco()
+```
+Confidence intervals for lift of recall / recall for different quantiles
+
+```{r}
+ci_stats <- all_features_data %>%
+  group_by(cancer_type, agg_level, quantile) %>%
+  summarize(
+    mean_recall = mean(recall),
+    mean_lift_recall = mean(lift_recall),
+    mean_precision = mean(precision),
+    mean_lift_precision = mean(lift_precision),
+    sd_recall = sd(recall),
+    sd_lift_recall = sd(lift_recall),
+    sd_precision = sd(precision),
+    sd_lift_precision = sd(lift_precision),
+    n_ex = n()
+  ) %>%
+  mutate(
+    ci_lower_recall = mean_recall - 1.96 * sd_recall / sqrt(n_ex),
+    ci_upper_recall = mean_recall + 1.96 * sd_recall / sqrt(n_ex),
+    
+    ci_lower_lift_recall = mean_lift_recall - 1.96 * sd_lift_recall / sqrt(n_ex),
+    ci_upper_lift_recall = mean_lift_recall + 1.96 * sd_lift_recall / sqrt(n_ex),    
+    
+    ci_lower_precision = mean_precision - 1.96 * sd_precision / sqrt(n_ex),
+    ci_upper_precision = mean_precision + 1.96 * sd_precision / sqrt(n_ex),       
+    
+    ci_lower_lift_precision = mean_lift_precision - 1.96 * sd_lift_precision / sqrt(n_ex),
+    ci_upper_lift_precision = mean_lift_precision + 1.96 * sd_lift_precision / sqrt(n_ex)
+  )
+
+```
+
+
+```{r save results}
+# roc auc
+roc_data <- roc_auc_data %>%
+  mutate(
+    train_test_diff = tr_auc - te_auc
+  ) %>%
+  group_by(cancer_type, agg_level) %>%
+  summarize(
+    min_test_auc = min(te_auc),
+    sd_test_auc = sd(te_auc),
+    median_test_auc = median(te_auc),
+    mean_test_auc = mean(te_auc),
+    train_test_diff = mean(train_test_diff),
+    n_ex = n()
+  ) %>%
+  mutate(
+    ci_lower_roc_auc = mean_test_auc - 1.96 * sd_test_auc / sqrt(n_ex),
+    ci_upper_roc_auc = mean_test_auc + 1.96 * sd_test_auc / sqrt(n_ex), 
+  ) %>%
+  select(-n_ex)
+
+# recall
+recall_stats_hsp <- ci_stats %>% 
+  filter(quantile %in% c(0.001, 0.005, 0.01,0.02,0.03, 0.040, 0.050, 0.100)) %>%
+  select(cancer_type, agg_level, quantile, mean_recall, mean_lift_recall, mean_precision, mean_lift_precision, ci_lower_lift_recall, ci_upper_lift_recall, ci_lower_lift_precision,ci_upper_lift_precision)
+
+
+# save
+# wb <- createWorkbook()
+# addWorksheet(wb, "ROC_AUC_hotspots")
+# addWorksheet(wb, "Recall_hotspots")
+# 
+# writeData(wb, sheet="ROC_AUC_hotspots", roc_data)
+# writeData(wb, sheet="Recall_hotspots", recall_stats_hsp)
+# 
+# saveWorkbook(wb, "../reports/train_best_features.xlsx", overwrite = T)
+```
+
+Compare with results on all features
+
+
+Median ROC AUC
+
+```{r}
+roc_data_base <- read.xlsx("../reports/train_baseline.xlsx", sheet = "ROC_AUC_hotspots")
+recall_data_base <- read.xlsx("../reports/train_baseline.xlsx", sheet = "Recall_hotspots")
+
+
+roc_med <- roc_data_base %>% 
+  select(cancer_type, agg_level, median_test_auc) %>%
+  setNames(c("cancer_type", "agg_level", "median_test_auc_base")) %>%
+  inner_join(
+    roc_data %>%
+      select(cancer_type, agg_level, median_test_auc) %>%
+      setNames(c("cancer_type", "agg_level", "median_test_auc_reduced")), by=c('cancer_type', 'agg_level'))
+  
+roc_med  
+```
+
+
+
+```{r}
+roc_med_pl <- melt(roc_med,id.vars = c("cancer_type", "agg_level"))
+roc_med_pl$variable_new <- gsub(x = roc_med_pl$variable, pattern = "median_test_auc_", replacement = "")
+ggplot(roc_med_pl, aes(x=cancer_type, y=value, fill=variable_new)) + 
+  geom_bar(stat='identity',  color="black", position = "dodge") +
+  scale_fill_jco()
+```
+
+
+Train test diff ROC AUC
+
+```{r}
+roc_data_base %>% 
+  select(cancer_type, agg_level, train_test_diff) %>%
+  setNames(c("cancer_type", "agg_level", "train_test_diff_base")) %>%
+  inner_join(
+    roc_data %>%
+      select(cancer_type, agg_level, train_test_diff) %>%
+      setNames(c("cancer_type", "agg_level", "train_test_diff_reduced")), by=c('cancer_type', 'agg_level'))
+```
+
+SD ROC AUC
+
+```{r}
+roc_data_base %>% 
+  select(cancer_type, agg_level, sd_test_auc) %>%
+  setNames(c("cancer_type", "agg_level", "sd_test_auc_base")) %>%
+  inner_join(
+    roc_data %>%
+      select(cancer_type, agg_level, sd_test_auc) %>%
+      setNames(c("cancer_type", "agg_level", "sd_test_auc_reduced")), by=c('cancer_type', 'agg_level'))
+```
+
+Comparison of quality of classifiers
+
+```{r}
+recall_all <- recall_data_base %>%
+  select(cancer_type, agg_level, quantile, mean_recall,mean_lift_recall,
+             mean_precision, mean_lift_precision) %>%
+  setNames(c("cancer_type", "agg_level", "quantile", "mean_recall_base","mean_lift_recall_base",
+             "mean_precision_base", "mean_lift_precision_base")) %>%
+  inner_join(
+    recall_stats_hsp %>%
+      select(cancer_type, agg_level, quantile, mean_recall, mean_lift_recall,
+             mean_precision, mean_lift_precision) %>%
+        setNames(c("cancer_type", "agg_level", "quantile", "mean_recall_reduced","mean_lift_recall_reduced",
+             "mean_precision_reduced", "mean_lift_precision_reduced")),
+    by=c('cancer_type', 'agg_level', 'quantile'))
+recall_all$quantile_chr <- as.character(recall_all$quantile)
+```
+
+For 0.01 probability quantile
+
+```{r  fig.width=10}
+comp_rec <- recall_all %>%
+  filter(quantile_chr == "0.01") %>%
+  select("cancer_type", "mean_lift_recall_base", "mean_lift_recall_reduced", "mean_lift_precision_base", "mean_lift_precision_reduced")
+
+comp_rec_pl <- comp_rec %>%
+  melt(id.vars=c("cancer_type"))
+comp_rec_pl[grep(x = comp_rec_pl$variable, pattern = "prec"), "variable_type"] <- "precision"
+comp_rec_pl[grep(x = comp_rec_pl$variable, pattern = "recall"), "variable_type"] <- "recall"
+comp_rec_pl[grep(x = comp_rec_pl$variable, pattern = "base"), "variable_new"] <- "base"
+comp_rec_pl[grep(x = comp_rec_pl$variable, pattern = "reduced"), "variable_new"] <- "reduced"
+ggplot(comp_rec_pl, aes(x=cancer_type, y=value, fill=variable_new)) + 
+  geom_bar(stat='identity', color="black", position = "dodge") +
+  facet_wrap(~variable_type,nrow = 2) + 
+  scale_fill_jco()
+```
+
+For 0.03 probability quantile
+
+```{r  fig.width=10}
+comp_rec <- recall_all %>%
+  filter(quantile_chr == "0.03") %>%
+  select("cancer_type", "mean_lift_recall_base", "mean_lift_recall_reduced", "mean_lift_precision_base", "mean_lift_precision_reduced")
+
+comp_rec_pl <- comp_rec %>%
+  melt(id.vars=c("cancer_type"))
+comp_rec_pl[grep(x = comp_rec_pl$variable, pattern = "prec"), "variable_type"] <- "precision"
+comp_rec_pl[grep(x = comp_rec_pl$variable, pattern = "recall"), "variable_type"] <- "recall"
+comp_rec_pl[grep(x = comp_rec_pl$variable, pattern = "base"), "variable_new"] <- "base"
+comp_rec_pl[grep(x = comp_rec_pl$variable, pattern = "reduced"), "variable_new"] <- "reduced"
+ggplot(comp_rec_pl, aes(x=cancer_type, y=value, fill=variable_new)) + 
+  geom_bar(stat='identity',  color="black", position = "dodge") +
+  facet_wrap(~variable_type,nrow = 2) + 
+  scale_fill_jco()
+```
+```{r}
+comp_rec_pl$variable_type[comp_rec_pl$variable_type == 'recall'] <- 'lift_recall'
+comp_rec_pl$variable_type[comp_rec_pl$variable_type == 'precision'] <- 'lift_precision'
+g1 <- ggplot(comp_rec_pl, aes(x=cancer_type, y=value, fill=variable_new)) + 
+  geom_bar(stat='identity',  color="black", position = "dodge") +
+  facet_wrap(~variable_type,nrow = 2) + 
+  scale_fill_jco() + 
+    theme(
+      text = element_text(size = 8, family = "arial"),
+      axis.title.x = element_text(size = 10),
+      axis.title.y = element_text(size = 10),
+      legend.position="bottom", legend.title = element_text(size = 10),
+    ) +
+  xlab("Cancer type") + 
+  ylab("value") +
+  labs(fill = "Feature set")
+g1
+
+# ggsave(filename = "Fig4.tiff", plot = g1, device = "tiff", path = "../paper_materials/supplementary figures/", dpi = 600, units = "in", width = 5, height = 3, scale = 2, compression = "lzw")
+```
+
+
+For 0.05 probability quantile
+
+```{r  fig.width=10}
+comp_rec <- recall_all %>%
+  filter(quantile_chr == "0.05") %>%
+  select("cancer_type", "mean_lift_recall_base", "mean_lift_recall_reduced", "mean_lift_precision_base", "mean_lift_precision_reduced")
+
+comp_rec_pl <- comp_rec %>%
+  melt(id.vars=c("cancer_type"))
+comp_rec_pl[grep(x = comp_rec_pl$variable, pattern = "prec"), "variable_type"] <- "precision"
+comp_rec_pl[grep(x = comp_rec_pl$variable, pattern = "recall"), "variable_type"] <- "recall"
+comp_rec_pl[grep(x = comp_rec_pl$variable, pattern = "base"), "variable_new"] <- "base"
+comp_rec_pl[grep(x = comp_rec_pl$variable, pattern = "reduced"), "variable_new"] <- "reduced"
+ggplot(comp_rec_pl, aes(x=cancer_type, y=value, fill=variable_new)) + 
+  geom_bar(stat='identity',  color="black", position = "dodge") +
+  facet_wrap(~variable_type,nrow = 2) + 
+  scale_fill_jco()
+```

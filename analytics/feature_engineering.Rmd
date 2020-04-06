@@ -1,0 +1,180 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(dplyr)
+library(reshape2)
+
+library(ggpubr)
+library(ggplot2)
+library(wesanderson)
+library(ggsci)
+
+library(formattable)
+
+all_results <- read.csv(file = "../data/output/feature_engineering.csv")
+all_results$diff_auc <- all_results$tr_auc - all_results$te_auc
+```
+
+### Analysis of addition of new features to base features
+
+Distribution of test ROC AUC difference with base model
+```{r}
+all_results_reshaped <- dcast(data = all_results, formula = iter + cancer_type ~ features_group, value.var = "te_auc")
+
+for (col in c( "base_with_binary_flags" , "base_with_higher_level_feats", "base_with_maximums")){
+  all_results_reshaped <- all_results_reshaped %>%
+    mutate(!!as.name(paste0(col, "_diff")) := !!as.name(col) - base)
+}
+all_results_reshaped_plot <- melt(
+  data = all_results_reshaped, 
+  id.vars = c("cancer_type", "iter"), 
+  measure.vars = c( "base_with_binary_flags_diff" ,
+                    "base_with_higher_level_feats_diff", "base_with_maximums_diff"))
+
+all_results_reshaped_plot$variable1[all_results_reshaped_plot$variable == "base_with_higher_level_feats_diff"] <- "base and aggregates"
+all_results_reshaped_plot$variable1[all_results_reshaped_plot$variable == "base_with_maximums_diff"] <- "base and maximums"     
+all_results_reshaped_plot$variable1[all_results_reshaped_plot$variable == "base_with_binary_flags_diff"] <- "base and binary flags"     
+g1 <- ggplot(all_results_reshaped_plot, aes(value, fill=variable1)) +
+  geom_density(alpha = 0.5) +
+  facet_wrap(~cancer_type, nrow = 2)+
+  geom_vline(xintercept = 0) + 
+  scale_fill_jco() + 
+  xlab("Difference in test ROC AUC") + 
+  ylab("Density") +
+  theme(
+      text = element_text(size = 8, family = "arial"),
+      axis.title.x = element_text(size = 10),
+      axis.title.y = element_text(size = 10),
+      legend.position="bottom", legend.title = element_text(size = 10),
+    ) + 
+  labs(fill = "Feature set")
+g1
+```
+
+Mean difference
+
+```{r}
+mean_diff <- all_results_reshaped %>%
+  group_by(cancer_type) %>%
+  summarize(
+    mean_diff_binary_flags = mean(base_with_binary_flags_diff),
+    mean_diff_higher_lev = mean(base_with_higher_level_feats_diff),
+    mean_diff_max = mean(base_with_maximums_diff)
+  )
+
+mean_diff <- mean_diff %>%
+  mutate(
+    mean_diff_binary_flags = round(mean_diff_binary_flags, 4),
+    mean_diff_higher_lev = round(mean_diff_higher_lev, 4),
+    mean_diff_max = round(mean_diff_max, 4)
+  )
+names(mean_diff) <- c("Cancer type", "Binary flags", "Higher level aggregates", "Maximums")
+
+
+formattable(
+  mean_diff, 
+  align =c("l","c","c","c"), 
+  list(
+    `Cancer type` = formatter("span", style = ~ style(color = "grey", font.weight = "bold")),
+    `Binary flags` = formatter(
+      "span", 
+      style = ~ style(color = ifelse(`Binary flags` < 0, "lightblue", "yellow")), 
+      ~ icontext(sapply(`Binary flags`, function(x) if (x < 0) "arrow-down" else if (x > 0) "arrow-up" else ""), `Binary flags`)),
+    `Higher level aggregates` = formatter(
+      "span", 
+      style = ~ style(color = ifelse(`Higher level aggregates` < 0, "lightblue", "yellow")), 
+      ~ icontext(sapply(`Higher level aggregates`, function(x) if (x < 0) "arrow-down" else if (x > 0) "arrow-up" else ""), `Higher level aggregates`)),
+    `Maximums` = formatter(
+      "span", 
+      style = ~ style(color = ifelse(`Maximums` < 0, "lightblue", "yellow")), 
+      ~ icontext(sapply(`Maximums`, function(x) if (x < 0) "arrow-down" else if (x > 0) "arrow-up" else ""), `Maximums`))
+  )
+  )
+```
+
+```{r}
+apply(mean_diff[2:4], MARGIN=2, FUN=mean)
+```
+
+
+### Analysis of performance of binary predictors only
+
+```{r}
+all_results <- read.csv("../data/output/feature_engineering_only_binary.csv")
+all_results$diff_auc <- all_results$tr_auc - all_results$te_auc
+```
+
+Distribution of test ROC AUC difference with model on base features
+
+```{r}
+all_results_reshaped <- dcast(data = all_results, formula = iter + cancer_type ~ features_group, value.var = "te_auc")
+
+for (col in c( "binary_flags" , "binary_with_maximums")){
+  all_results_reshaped <- all_results_reshaped %>%
+    mutate(!!as.name(paste0(col, "_diff")) := !!as.name(col) - base)
+}
+all_results_reshaped_plot <- melt(data = all_results_reshaped, id.vars = c("cancer_type", "iter"), 
+                                  measure.vars = c( "binary_with_maximums_diff", "binary_flags_diff"))
+
+all_results_reshaped_plot$variable1[all_results_reshaped_plot$variable == "binary_with_maximums_diff"] <- "maximums"
+all_results_reshaped_plot$variable1[all_results_reshaped_plot$variable == "binary_flags_diff"] <- "binary flags"
+g2 <- ggplot(all_results_reshaped_plot, aes(value, fill=variable1)) +
+  geom_density(alpha = 0.5) +
+  facet_wrap(~cancer_type, nrow = 2)+
+  geom_vline(xintercept = 0) + 
+  scale_fill_jco() + 
+  xlab("Difference in test ROC AUC") + 
+  ylab("Density") +
+  theme(
+      text = element_text(size = 8, family = "arial"),
+      axis.title.x = element_text(size = 10),
+      axis.title.y = element_text(size = 10),
+      legend.position="bottom", legend.title = element_text(size = 10),
+    ) + 
+  labs(fill = "Feature set")
+g2
+```
+
+Mean difference
+
+```{r}
+mean_diff <- all_results_reshaped %>%
+  group_by(cancer_type) %>%
+  summarize(
+    mean(binary_with_maximums_diff),
+    mean(binary_flags_diff)
+  )
+mean_diff
+```
+```{r}
+apply(mean_diff[2:3], MARGIN = 2, FUN = mean)
+```
+
+Mean test ROC AUC by cancer type and feature sets
+
+```{r}
+all_results_reshaped %>%
+  group_by(cancer_type) %>%
+  summarize(
+    median_base = median(base),
+    median_binary_flags = median(binary_flags),
+    median_binary_with_max = median(binary_with_maximums)
+    )
+```
+
+
+
+```{r}
+g_f <- ggarrange(g1, g2,
+          labels = c("A", "B"),
+          ncol = 1, nrow = 2,
+          font.label = list(size = 10, color = "black", face ="bold")
+          )
+g_f
+# ggsave(filename = "Fig1.tiff", plot = g_f, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 5, height = 3, scale = 2, compression = "lzw")
+
+```
+

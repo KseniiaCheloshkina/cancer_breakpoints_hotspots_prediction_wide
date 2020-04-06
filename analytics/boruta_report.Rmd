@@ -1,0 +1,599 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+## Boruta Feature Selection
+
+Load data
+
+```{r echo=F}
+library(dplyr)
+library(reshape2)
+
+library(ggplot2)
+library(wesanderson)
+library("ggsci")
+
+library(openxlsx)
+
+library(formattable)
+
+customYellow = 'yellow'
+customBlue = '#1E90FF'
+pal <- wes_palette("Zissou1", 100, type = "continuous")
+
+df <- read.csv("../data/output/boruta_res_100000.csv", row.names = 1, stringsAsFactors = F)
+df <- unique(df)
+df %>%
+  group_by(agg_level) %>%
+  summarize(n_distinct(cancer_type))
+```
+
+#### Analysis of features selection for task of hotspots prediction 
+
+For each cancer type and labeling type there were 30 train/test splits which includes 10 different procedures for 5-iteration Boruta FS.
+
+How many iterations were used in datasets?
+
+```{r}
+df_agg <- df %>%
+  filter(feature_type == "real") %>%
+  group_by(cancer_type, repeat., resample, iter) %>%
+  summarize(
+    n_selected = sum(hit),
+    n_total = n()
+    ) %>%
+  mutate(
+    ratio_selected = n_selected / n_total
+  )
+
+df_1_sample <- df_agg %>%
+  group_by(cancer_type, repeat., resample) %>%
+  filter(max(iter) == 1) %>%
+  select(cancer_type, repeat., resample) %>%
+  unique()
+
+df_11 <- df_agg %>%
+  inner_join(df_1_sample, by = c("cancer_type", "repeat.", "resample")) %>%
+  group_by(iter) %>%
+  summarize(
+    mean_n_selected = mean(n_selected),
+    mean_ratio_selected = mean(ratio_selected)
+  )
+
+df_2_sample <- df_agg %>%
+  group_by(cancer_type, repeat., resample) %>%
+  filter(max(iter) == 2) %>%
+  select(cancer_type, repeat., resample) %>%
+  unique()
+
+df_21 <- df_agg %>%
+  inner_join(df_2_sample, by = c("cancer_type", "repeat.", "resample")) %>%
+  group_by(iter) %>%
+  summarize(
+    mean_n_selected = mean(n_selected),
+    mean_ratio_selected = mean(ratio_selected)
+  )
+
+df_3_sample <- df_agg %>%
+  group_by(cancer_type, repeat., resample) %>%
+  filter(max(iter) == 3) %>%
+  select(cancer_type, repeat., resample) %>%
+  unique()
+
+df_31 <- df_agg %>%
+  inner_join(df_3_sample, by = c("cancer_type", "repeat.", "resample")) %>%
+  group_by(iter) %>%
+  summarize(
+    mean_n_selected = mean(n_selected),
+    mean_ratio_selected = mean(ratio_selected)
+  )
+
+df_4_sample <- df_agg %>%
+  group_by(cancer_type, repeat., resample) %>%
+  filter(max(iter) == 4) %>%
+  select(cancer_type, repeat., resample) %>%
+  unique()
+
+df_41 <- df_agg %>%
+  inner_join(df_4_sample, by = c("cancer_type", "repeat.", "resample")) %>%
+  group_by(iter) %>%
+  summarize(
+    mean_n_selected = mean(n_selected),
+    mean_ratio_selected = mean(ratio_selected)
+  )
+
+df_5_sample <- df_agg %>%
+  group_by(cancer_type, repeat., resample) %>%
+  filter(max(iter) == 5) %>%
+  select(cancer_type, repeat., resample) %>%
+  unique()
+
+df_51 <- df_agg %>%
+  inner_join(df_5_sample, by = c("cancer_type", "repeat.", "resample")) %>%
+  group_by(iter) %>%
+  summarize(
+    mean_n_selected = mean(n_selected),
+    mean_ratio_selected = mean(ratio_selected)
+  )
+
+df_11$max_iter <- 1
+df_21$max_iter <- 2
+df_31$max_iter <- 3
+df_41$max_iter <- 4
+df_51$max_iter <- 5
+
+df_stats <- rbind(
+  df_11,
+  df_21,
+  df_31,
+  df_41,
+  df_51
+  )
+
+data.frame(
+  n_iters = seq(1, 5),
+  n_datasets = c(
+    nrow(df_1_sample),
+    nrow(df_2_sample), 
+    nrow(df_3_sample), 
+    nrow(df_4_sample),
+    nrow(df_5_sample))
+)
+
+```
+
+How namy features selected on each iteration?
+
+```{r}
+df_stats$max_iter <- as.character(df_stats$max_iter)
+df_stats$iter <- as.character(df_stats$iter)
+
+ggplot(df_stats, aes(x=max_iter, fill=iter, y=mean_n_selected)) + 
+  geom_bar(stat="identity", color="black", position = "dodge")  + 
+  scale_fill_jco()
+```
+
+Typically, 2-3 features are selected if there were less than 5 iterations (or when relatively big number of features were removed at the beginning of the procedure). In contrast, when all 5 iterations were used, lower percent of features were removed ar each iteration and in average 9 features were finally selected.
+
+How namy features selected on each iteration in dependence on cancer type
+
+```{r}
+df_last_iter <- df_agg %>%
+  group_by(cancer_type, repeat., resample) %>%
+  filter(iter == max(iter))
+
+ggplot(df_last_iter, 
+       aes(x=reorder(cancer_type, n_selected, FUN = median), fill=cancer_type, y=n_selected)) + 
+  geom_violin() + 
+  scale_fill_jco()
+```
+
+```{r}
+df_last_iter %>%
+  group_by(cancer_type) %>%
+  summarize(median_iter = median(iter)) %>%
+  arrange(median_iter)
+```
+
+```{r}
+df_last_iter %>%
+  group_by(cancer_type) %>%
+  summarize(median_selected = median(n_selected)) %>%
+  arrange(median_selected)
+```
+
+```{r}
+df_last_iter %>%
+  group_by(cancer_type) %>%
+  filter(n_selected == 0) %>%
+  summarize(n_zero_features = n()) %>%
+  arrange(n_zero_features)
+```
+
+Two groups could be defined:
+
+ 1. Brain, liver, pancreatic, blood, skin - Median number of iterations is 1-4 with median number of selected features of 3-4. Besides, in 29-50 cases (from 300) no features were selected. All except skin cancer has labeling type 99.9%.
+ 2. Bone, breast, ovary, prostate, uterus - Median number of iterations is 5 with median number of selected features of 7-9. Besides, in 1-19 cases (from 300) no features were selected. Labeling types - 99% and 99.5%
+ 
+```{r}
+df %>%
+  select(cancer_type, agg_level) %>%
+  unique()
+```
+
+
+For each feature how many times it appeared in final feature set by cancer type
+
+```{r, fig.width=10, fig.height=12}
+df_all_hits <- df %>% 
+  filter(feature_type == "real") %>%
+  filter(hit == 1)
+
+df_hits_last_iter <- df_all_hits %>%
+  group_by(cancer_type, repeat., resample) %>%
+  filter(iter == max(iter))
+
+df_hits_last_iter$feature_n <- gsub(x=df_hits_last_iter$feature, pattern = "upper_", replacement = "")
+sec_str <- c("A_Phased_Repeat","Direct_Repeat", "Inverted_Repeat", "Mirror_Repeat","Short_Tandem_Repeat",
+             "G_quadruplex", "stemloops_16_50", "stemloops_6_15", "Z_DNA_Motif")
+reg <- c("X3UTR", "X5UTR", "codingExons", "downstream", "introns", "promoters", "WholeGenes")
+tad <- c("tad_boundaries_liver", "tad_boundaries_ovary", "tad_boundaries_pancreatic")
+chromatin <-c("cancer_skin_DNase_seq", "cancer_brain_DNase_seq", "cancer_blood_DNase_seq",
+              "cancer_prostate_DNase_seq", "cancer_pancreas_DNase_seq", "cancer_ovary_DNase_seq",
+              "cancer_liver_DNase_seq", "cancer_breast_DNase_seq", "cancer_uterus_DNase_seq",
+              "cancer_bone_DNase_seq")
+methyl <- c("cancer_brain_DNA_methylation", "cancer_breast_DNA_methylation",
+            "cancer_liver_DNA_methylation", "cancer_pancreas_DNA_methylation",
+            "cancer_skin_DNA_methylation", "cancer_uterus_DNA_methylation")
+histones <- c( "cancer_liver_H3K27ac.human", "cancer_uterus_H3K27ac.human", "cancer_blood_H3K27ac.human",
+               "cancer_brain_H3K27ac.human",
+               "cancer_pancreas_H3K27ac.human","cancer_blood_H3K27me3.human","cancer_brain_H3K27me3.human",    
+               "cancer_blood_H3K36me3.human","cancer_pancreas_H3K36me3.human","cancer_brain_H3K36me3.human",    
+               "cancer_pancreas_H3K4me1.human","cancer_blood_H3K4me1.human","cancer_brain_H3K4me1.human",
+               "cancer_breast_H3K4me3.human","cancer_uterus_H3K4me3.human","cancer_liver_H3K4me3.human",
+               "cancer_brain_H3K4me3.human","cancer_blood_H3K4me3.human","cancer_skin_H3K4me3.human",
+               "cancer_pancreas_H3K4me3.human","cancer_brain_H3K9me3.human","cancer_pancreas_H3K9me3.human",
+               "cancer_blood_H3K9me3.human" )
+tf <- c("cancer_liver_ATF3.human", "cancer_liver_CTCF.human", "cancer_pancreas_CTCF.human",
+        "cancer_liver_EGR1.human", "cancer_liver_FOXA1.human", "cancer_liver_FOXA2.human", 
+        "cancer_liver_GABPA.human","cancer_liver_HNF4A.human", "cancer_liver_HNF4G.human",
+        "cancer_liver_JUND.human","cancer_liver_MAX.human", "cancer_liver_NR2F2.human",
+        "cancer_liver_REST.human", "cancer_liver_RXRA.human", "cancer_liver_SP1.human",
+        "cancer_liver_YY1.human", "cancer_liver_ZBTB33.human")
+
+df_hits_last_iter$feature_group <- ifelse(
+  df_hits_last_iter$feature_n %in% sec_str, "sec_str",
+  ifelse(
+    df_hits_last_iter$feature_n %in% reg, "reg",
+    ifelse(
+      df_hits_last_iter$feature_n %in% tad, "tad",
+      ifelse(
+        df_hits_last_iter$feature_n %in% chromatin, "chromatin",
+        ifelse(
+          df_hits_last_iter$feature_n %in% methyl, "methyl",
+          ifelse(
+            df_hits_last_iter$feature_n %in% histones, "histones", "tf"
+        )
+        )
+      )
+    )
+  )
+)
+
+df_hits_last_iter_agg <- df_hits_last_iter %>%
+  group_by(cancer_type, feature, feature_group) %>%
+  summarize(n_best = n())
+
+f <- df_hits_last_iter_agg %>% 
+  ungroup() %>% 
+  select(feature, feature_group) %>%
+  unique() %>%
+  arrange(feature_group, feature)
+
+df_hits_last_iter_agg$feature <- with(df_hits_last_iter_agg, factor(feature, levels = f$feature))
+
+ggplot(df_hits_last_iter_agg, aes(x=cancer_type, y=feature,fill=n_best)) + 
+  geom_tile() + 
+  scale_fill_gradientn(colours = pal)
+```
+
+```{r fig.height=12}
+g1 <- ggplot(df_hits_last_iter_agg, aes(x=cancer_type, y=feature,fill=n_best)) + 
+  geom_tile() + 
+  scale_fill_gradientn(colours = pal) + 
+  xlab("Cancer type") + 
+  ylab("Feature") +
+  theme_minimal()+ # minimal theme
+  theme(
+    text = element_text(size = 8, family = "arial"),
+    axis.title.x = element_text(size = 10),
+    axis.title.y = element_text(size = 10),
+    ) + 
+  labs(fill = "Number of \nexecutions")
+g1
+
+# ggsave(filename = "Fig3.tiff", plot = g1, device = "tiff", path = "../paper_materials/supplementary figures/",
+#        dpi = 600, units = "in", width = 4, height = 5, scale = 2, compression = "lzw")
+```
+
+
+
+Aggregation by feature group for each cancer type: number of datasets in which features of the feature group selected.
+
+
+```{r fig.width=10}
+df_hits_last_iter_agg_new <- df_hits_last_iter %>%
+  group_by(cancer_type, feature_group) %>%
+  summarize(
+    n_best = n_distinct(resample, repeat.)
+    )
+
+ggplot(df_hits_last_iter_agg_new, aes(x=cancer_type, y=n_best, fill=feature_group))+
+  geom_bar(stat="identity", color="black", position="dodge") + 
+  scale_fill_jco()
+```
+
+Выводы: 
+
+По типу рака:
+В более половины датасетов встретились признаки следующих групп:
+
+ - blood - вторичные структуры + регионы
+ - bone - вторичные структуры + регионы + транскрипционные факторы
+ - brain - вторичные структуры
+ - breast - вторичные структуры + регионы + транскрипционные факторы + хроматин + метилирование
+ - liver -  транскрипционные факторы
+ - ovary - вторичные структуры + регионы + транскрипционные факторы
+ - pancreatic -  регионы + транскрипционные факторы
+ - prostate - вторичные структуры + регионы + транскрипционные факторы
+ - skin - вторичные структуры + регионы + транскрипционные факторы
+ - uterus - вторичные структуры + транскрипционные факторы + хроматин
+
+Больше всего важных групп фичей наблюдается для рака груди, меньше всего - для мозга и печени.
+
+По признакам:
+В целом, нет группы фичей, которая важна для всех типов рака, однако для 8 типов рака важны вторичные структуры и транскрипционные факторы.
+
+В рисунок по фичам не вошли признаки, которые ни разу не появились в финальном наборе фичей.
+```{r}
+all_f <- unique(df$feature)
+all_f <- setdiff(all_f, grep(x = all_f, pattern = "shadow", value = T))
+
+sel_f <- unique(df_hits_last_iter$feature)
+
+setdiff(all_f, sel_f)
+```
+Это 9 фичей: модификации гистонов дли blood, brain, DnaseSeq для liver.
+
+Алгоритм Борута был применен всего к 10 * 30 * 10 = 2 700 датасетам. Посмотрим, какое количество раз каждый признак был включен в итоговый набор фичей в этих датасетах.
+```{r}
+by_f <- df_hits_last_iter %>%
+  group_by(feature_group, feature) %>%
+  summarize(
+    total_sets = n()
+    ) %>%
+  arrange(desc(total_sets))
+by_f
+```
+
+Абсолютный максимум у признака upper_Direct_Repeat - значение покрытия вторичной структурой direct repeat на уровне 1 Mb (908 раз). Далее, более 500 раз были использованы признаки  upper_G_quadruplex, G_quadruplex, upper_cancer_liver_SP1.human, Direct_Repeat, upper_Z_DNA_Motif, upper_cancer_liver_RXRA.human, upper_X5UTR, Short_Tandem_Repeat,	upper_cancer_liver_NR2F2.human,  upper_Short_Tandem_Repeat (то есть по большей части вторичные структуры). При этом в 8 из 11 случаев это значение покрытия на уровне 1 Мб.
+
+```{r fig.width=10, fig.height=12}
+ggplot(by_f, aes(x=reorder(feature, total_sets, median), y=total_sets, fill=feature_group))+
+  geom_bar(stat="identity",color="black") + 
+  coord_flip() + 
+  scale_fill_jco()
+```
+
+Теперь выберем пул фичей для каждого типа рака.
+
+```{r,fig.width=12, fig.height=5}
+ggplot(df_hits_last_iter_agg, aes(n_best)) + 
+  geom_density(alpha=0.5) + 
+  facet_grid(~cancer_type, scales = "free")
+```
+
+Видно, что 50 - для многих типов рака переходная граница между большим количеством фичей около 0 и небольшим количеством важных фичей. Выберем эти число как порог для выбора фичей.  
+
+```{r}
+thr <- 50
+df_hits_last_iter_agg %>%
+  filter(n_best > 50) %>%
+  group_by(cancer_type) %>%
+  summarize(
+    n_features = n()
+  ) %>%
+  arrange(n_features)
+```
+
+```{r}
+res_hsp <- df_hits_last_iter_agg %>%
+  mutate(boruta_selected = ifelse(n_best > thr, 1, 0)) %>%
+  select(-thr)
+
+res_hsp %>%  
+  filter(boruta_selected == 1) %>%
+  ungroup() %>%
+  select(feature) %>%
+  unique() %>%
+  nrow()
+```
+
+Всего 46 из 130 фичей
+
+```{r fig.width=10}
+cn_for_feat <- res_hsp %>% 
+  filter(boruta_selected == 1) %>%
+  group_by(feature, feature_group) %>%
+  summarize(n_cancer_types = n_distinct(cancer_type)) %>% 
+  arrange(desc(n_cancer_types))
+
+ggplot(cn_for_feat, aes(x=reorder(feature, n_cancer_types, mean) , y=n_cancer_types,fill=feature_group))+
+  geom_bar(stat="identity",color="black",  position="dodge") + 
+  coord_flip() + 
+  scale_fill_jco()
+```
+
+Heatmap for selected features
+
+```{r fig.width=10}
+ggplot(res_hsp %>% filter(boruta_selected == 1), aes(x=cancer_type, y=feature,fill=n_best)) + 
+  geom_tile() + 
+  scale_fill_gradientn(colours = pal)
+```
+
+
+
+```{r save}
+# wb <- createWorkbook()
+# addWorksheet(wb, "hotspots_features")
+# writeData(wb, sheet="hotspots_features", res_hsp)
+# saveWorkbook(wb, "../data/output/boruta_stats.xlsx", overwrite = T)
+```
+
+
+### Cancer types clustering
+
+
+```{r fig.width=15}
+df_hits_last_iter_agg$feature_n <- gsub(df_hits_last_iter_agg$feature, pattern = "upper_", replacement = "")
+# specific preparation for tissue-specific features
+df_hits_last_iter_agg$feature_n[df_hits_last_iter_agg$feature_group == "histones"] <- unlist(
+  lapply(
+    strsplit(
+      x = df_hits_last_iter_agg$feature_n[df_hits_last_iter_agg$feature_group == "histones"],
+      split="_"), 
+    function(x) x[[3]])
+  )
+df_hits_last_iter_agg$feature_n[df_hits_last_iter_agg$feature_group == "chromatin"] <- "DNase_seq"
+
+
+# perform clustering for each feature group separately
+f_gr <- unique(df_hits_last_iter_agg$feature_group)
+f_gr <- f_gr[f_gr != "tad"]
+
+all_cl_res <- data.frame()
+
+for (feat_gr_nm  in f_gr){
+  data_part <- df_hits_last_iter_agg[df_hits_last_iter_agg$feature_group == feat_gr_nm,
+                                     c("cancer_type", "feature_n", "n_best")]
+  data_part_max <- data_part %>%
+    group_by(cancer_type, feature_n) %>%
+    filter(n_best == max(n_best)) %>%
+    mutate(
+      rn = row_number()
+    ) %>%
+    filter(rn == 1)
+  
+  data_part_max_casted <- dcast(data_part_max, cancer_type ~ feature_n, value.var = "n_best")
+  data_part_max_casted[is.na(data_part_max_casted)] <- 0
+  row.names(data_part_max_casted) <- data_part_max_casted$cancer_type
+  data_part_max_casted$cancer_type <- NULL
+  dist_m <- dist(data_part_max_casted, method = "euclidean")
+  hclustering <- hclust(dist_m, method = "ward.D")
+  # ordering <- row.names(data_part_max_casted)[hclustering$order]
+  # cl <- data.frame(
+  #   feature_group = feat_gr_nm,
+  #   cancer_type = ordering,
+  #   cluster_n = seq(1, length(ordering))
+  # )
+  cl <- data.frame(
+    feature_group = feat_gr_nm,
+    cancer_type = row.names(data_part_max_casted),
+    cluster_n = cutree(hclustering, k = 3)
+  )
+  all_cl_res <- rbind(all_cl_res, cl)
+}
+
+ggplot(all_cl_res, aes(x=feature_group, y=cluster_n, color=cancer_type, group=cancer_type)) + 
+  geom_point() + 
+  geom_line() +
+  coord_polar() +
+  theme(legend.position = "bottom") +
+  geom_ribbon(aes(ymin=0, ymax=cluster_n, fill=cancer_type, alpha=0.2)) + 
+  facet_wrap( ~ cancer_type, nrow=2, ncol=5) + 
+  scale_fill_jco() + 
+  scale_color_jco()
+
+```
+
+Нет идентичных типов рака, однако некоторые типы рака выглядят похоже, например:
+
+ - blood / pancreatic
+ - bone / brain
+ - ovary / prostate (!)
+ - breast / uterus (!)
+
+```{r}
+all_cl_raw <- dcast(all_cl_res, cancer_type ~ feature_group, value.var = "cluster_n")
+all_cl_raw
+```
+
+
+
+```{r echo=F}
+# FInal clustering - NOT STABLE
+# in_m <- as.matrix(all_cl_raw)
+# n <- nrow(all_cl_raw)
+# out_m <- matrix(nrow=n, ncol=n)
+# out_m
+# for (i in 1: (n-1)){
+#   for (j in (i + 1): n){
+#     x1  <- in_m[i, ]
+#     x2  <- in_m[j, ]
+#     d <- (x1 - x2)^2
+#     mean_d <- sum(d[!is.na(d)]) / length(d[!is.na(d)])
+#     out_m[i, j] <- out_m[j, i] <- mean_d     
+#   }
+#  
+# }
+# rownames(out_m) <- row.names(all_cl_raw)
+# colnames(out_m) <- row.names(all_cl_raw)
+# dist_m <- as.dist(out_m)
+# dist_m
+# # dist_m <- dist(all_cl_raw, method = "manhattan")
+# hclustering <- hclust(dist_m, method = "ward.D2")
+# ordering <- row.names(all_cl_raw)[hclustering$order]
+# final_cl <- data.frame(
+#   cancer_type = ordering,
+#   cluster_n = seq(1, length(ordering))
+# )
+# plot(hclustering$height)
+# plot(hclustering)
+# rect.hclust(hclustering, k=4)
+```
+
+
+### Feature correlation
+
+```{r fig.width=10}
+best_features <- read.xlsx("../data/output/boruta_stats.xlsx", sheet = "hotspots_features")
+best_features <- best_features[best_features$boruta_selected == 1, 
+                               c("cancer_type", "feature")]
+best_features <- best_features %>% select(feature) %>% unique()
+features_cols <- gsub(x=best_features$feature, pattern = "upper_", replacement = "") %>% unique()
+
+# load data
+win_len <- 100000
+win_len_upper <- win_len * 10
+data_path <- "../data/datasets/" 
+data <- read.csv(
+  paste0(data_path, "dataset_", format(win_len, scientific = FALSE), ".csv")
+)
+source("features.R")
+all_data <- get_higher_level_features(data=data, features_cols = features_cols, 
+                                           win_len_upper = win_len_upper,
+                                           path_to_upper_data = paste0(data_path, "dataset_",
+                                                                       format(win_len_upper, scientific = FALSE), ".csv"))
+
+corrm <- cor(all_data[best_features$feature], method="spearman")
+corrm_m <- melt(corrm)
+
+corrm_m %>%
+  filter(Var1 != Var2) %>%
+  arrange(desc(value)) %>%
+  head(15)
+corrm_m$Var1 <- factor(corrm_m$Var1, levels = best_features$feature %>% sort())
+corrm_m$Var2 <- factor(corrm_m$Var2, levels = best_features$feature %>% sort())
+ggplot(corrm_m , aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile() + 
+  scale_fill_gradientn(colours = pal) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+```{r}
+ggplot(corrm_m %>% filter(Var1 != Var2), aes(value)) + 
+  geom_histogram()
+```
+
+```{r}
+corrm_m %>% 
+  filter(Var1 != Var2) %>%
+  filter(value >= 0.8) %>%
+  arrange(desc(value))
+
+```
+

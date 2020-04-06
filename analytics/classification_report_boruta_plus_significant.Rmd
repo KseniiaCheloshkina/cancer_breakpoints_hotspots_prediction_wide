@@ -1,0 +1,372 @@
+---
+title: "Classification report"
+output:
+  html_notebook: default
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+```{r "loading data", echo=F}
+library(ggplot2)
+library(ggsci)
+library(wesanderson)
+
+library(dplyr)
+library(reshape2)
+
+library(formattable)
+library(openxlsx)
+
+win_len <- 100000
+
+### get final results data
+
+# for almost all cancer types
+main_res_path <- "../data/output/classifier_results_best_features/"
+roc_auc_data <- read.csv(paste0(main_res_path, "result_roc_auc_100000.csv"), row.names = 1, stringsAsFactors = F)
+recall_data <- read.csv(paste0(main_res_path, "result_recall_100000.csv"), row.names = 1, stringsAsFactors = F)
+roc_auc_data_main <- roc_auc_data[!roc_auc_data$cancer_type %in% c("breast", "pancreatic", "prostate"), ]
+recall_data_main <- recall_data[!recall_data$cancer_type %in% c("breast", "pancreatic", "prostate"), ]
+
+# for pancreatic cancer
+pancr_res_path <- "../data/output/pancreatic_fs/"
+roc_auc_data <- read.csv(paste0(pancr_res_path, "result_roc_auc_100000.csv"), row.names = 1, stringsAsFactors = F)
+recall_data <- read.csv(paste0(pancr_res_path, "result_recall_100000.csv"), row.names = 1, stringsAsFactors = F)
+roc_auc_data_pancr <- roc_auc_data[roc_auc_data$feat_added == "upper_WholeGenes",]
+recall_data_pancr <- recall_data[recall_data$feat_added == "upper_WholeGenes", ]
+roc_auc_data_pancr$feat_added <- NULL
+recall_data_pancr$feat_added <- NULL
+
+# for prostate cancer
+prost_res_path <- "../data/output/prostate_fs/"
+roc_auc_data <- read.csv(paste0(prost_res_path, "result_roc_auc_100000.csv"), row.names = 1, stringsAsFactors = F)
+recall_data <- read.csv(paste0(prost_res_path, "result_recall_100000.csv"), row.names = 1, stringsAsFactors = F)
+roc_auc_data_prost <- roc_auc_data[roc_auc_data$feat_added == "cancer_liver_YY1.human",]
+recall_data_prost <- recall_data[recall_data$feat_added == "cancer_liver_YY1.human", ]
+roc_auc_data_prost$feat_added <- NULL
+recall_data_prost$feat_added <- NULL
+
+# for breast cancer
+breast_res_path <- "../data/output/classifier_results_best_features_boruta_sign/"
+roc_auc_data_breast <- read.csv(paste0(breast_res_path, "result_roc_auc_100000.csv"), row.names = 1, stringsAsFactors = F)
+recall_data_breast <- read.csv(paste0(breast_res_path, "result_recall_100000.csv"), row.names = 1, stringsAsFactors = F)
+
+roc_auc_data_full <- rbind(
+  roc_auc_data_main,
+  roc_auc_data_breast,
+  roc_auc_data_pancr,
+  roc_auc_data_prost
+)
+
+recall_data_full <- rbind(
+  recall_data_main,
+  recall_data_breast,
+  recall_data_pancr,
+  recall_data_prost
+)
+
+roc_auc_data_full[roc_auc_data_full$agg_level == "99", "agg_level"] <- "99."
+recall_data_full[recall_data_full$agg_level == "99", "agg_level"] <- "99."
+
+# write full results
+# path_to_full_data <- "../data/output/classifier_results_best_features_boruta_sign/full_results/"
+# write.csv(roc_auc_data_full, file=paste0(path_to_full_data, "result_roc_auc_100000.csv"))
+# write.csv(recall_data_full, file=paste0(path_to_full_data, "result_recall_100000.csv"))
+
+### get results
+# roc auc
+roc_data <- roc_auc_data_full %>%
+  mutate(
+    train_test_diff = tr_auc - te_auc
+  ) %>%
+  group_by(cancer_type, agg_level) %>%
+  summarize(
+    min_test_auc = min(te_auc),
+    sd_test_auc = sd(te_auc),
+    median_test_auc = median(te_auc),
+    mean_test_auc = mean(te_auc),
+    train_test_diff = mean(train_test_diff),
+    n_ex = n()
+  ) %>%
+  mutate(
+    ci_lower_roc_auc = mean_test_auc - 1.96 * sd_test_auc / sqrt(n_ex),
+    ci_upper_roc_auc = mean_test_auc + 1.96 * sd_test_auc / sqrt(n_ex)
+  ) %>%
+  select(-n_ex)
+
+# recall
+map_df <- data.frame(agg_level=c("99.", "99.5.", "99.9."), agg_level_num = c(0.01, 0.005, 0.001))
+recall_data_full <- recall_data_full %>%
+  inner_join(map_df)
+recall_data_full$lift_precision <- recall_data_full$precision / recall_data_full$agg_level_num
+
+
+recall_stats <- recall_data_full %>%
+  group_by(cancer_type, agg_level, quantile) %>%
+  summarize(
+    mean_recall = mean(recall),
+    mean_lift_recall = mean(lift_recall),
+    mean_precision = mean(precision),
+    mean_lift_precision = mean(lift_precision),
+    sd_recall = sd(recall),
+    sd_lift_recall = sd(lift_recall),
+    sd_precision = sd(precision),
+    sd_lift_precision = sd(lift_precision),
+    n_ex = n()
+  )  %>%
+  mutate(
+    ci_lower_lift_recall = mean_lift_recall - 1.96 * sd_lift_recall / sqrt(n_ex),
+    ci_upper_lift_recall = mean_lift_recall + 1.96 * sd_lift_recall / sqrt(n_ex),
+
+    ci_lower_lift_precision = mean_lift_precision - 1.96 * sd_lift_precision / sqrt(n_ex),
+    ci_upper_lift_precision = mean_lift_precision + 1.96 * sd_lift_precision / sqrt(n_ex),
+  ) %>%
+  filter(quantile %in% c(0.001, 0.005, 0.01,0.02,0.03, 0.040, 0.050, 0.100)) %>%
+  select(cancer_type, agg_level, quantile, mean_recall, mean_lift_recall,ci_lower_lift_recall,
+         ci_upper_lift_recall, mean_precision, mean_lift_precision, ci_lower_lift_precision,
+         ci_upper_lift_precision)
+
+
+# save
+# wb <- createWorkbook()
+# addWorksheet(wb, "ROC_AUC_hotspots")
+# addWorksheet(wb, "Recall_hotspots")
+# 
+# writeData(wb, sheet="ROC_AUC_hotspots", roc_data)
+# writeData(wb, sheet="Recall_hotspots", recall_stats)
+# 
+# saveWorkbook(wb, "../reports/train_best_features_boruta_sign.xlsx", overwrite = T)
+```
+
+## Comparison of quality for full and reduced model
+
+
+```{r}
+roc_data_base <- read.xlsx("../reports/train_baseline.xlsx", sheet = "ROC_AUC_hotspots")
+recall_data_base <- read.xlsx("../reports/train_baseline.xlsx", sheet = "Recall_hotspots")
+
+roc_data_comp <- rbind.data.frame(
+  roc_data_base %>%
+  inner_join(
+    roc_data %>% select(cancer_type, agg_level) %>% unique(),
+    by=c("cancer_type", "agg_level")) %>% 
+    mutate(type = "base"),
+  roc_data %>% mutate(type = "reduced"))
+
+recall_stats_comp <- rbind.data.frame(
+    recall_data_base %>%
+      inner_join(
+        recall_stats %>% select(cancer_type, agg_level) %>% unique(),
+        by=c("cancer_type", "agg_level")) %>% 
+    mutate(type = "base"),
+  recall_stats %>%
+    mutate(type = "reduced")
+)
+```
+
+### ROC AUC
+
+```{r fig.height=7}
+roc_data_comp_m <- melt(roc_data_comp, id.vars = c("cancer_type", "agg_level", "type"))
+
+ggplot(roc_data_comp_m, aes(x=cancer_type, y=value, fill=type)) + 
+  geom_bar(stat="identity", color="black", position = "dodge") + 
+  facet_wrap(~variable, nrow = 5, scales = "free_y") + 
+  scale_fill_jco()
+```
+Выводы:
+Медианный тествый ROC AUC на выбранных фичах отличается от медианного тестового ROC AUC на всех признаках незначительно для всех типов рака. При этом в среднем переобучение снизилось для всех типов рака.
+
+### Lift of recall and precision
+
+```{r}
+recall_stats_comp_m <- melt(recall_stats_comp %>%
+                              select("cancer_type", "agg_level", "quantile", "mean_lift_recall", "mean_lift_precision",
+                                     "type"), id.vars = c("cancer_type", "agg_level", "type", "quantile"))
+recall_stats_comp_m$var_new <- paste0(recall_stats_comp_m$variable, "_", recall_stats_comp_m$type)
+recall_stats_comp_m$quantile_chr<- as.character(recall_stats_comp_m$quantile)
+recall_stats_comp_m <- recall_stats_comp_m %>%
+  filter(quantile > 0.001)
+```
+
+
+```{r fig.height=10}
+ggplot(recall_stats_comp_m, aes(x=quantile, y=value, color=var_new)) + 
+  geom_line() + 
+  facet_wrap(~cancer_type, nrow = 10, scales = "free_y") + 
+  scale_color_jco()
+```
+
+```{r fig.height=10}
+ggplot(recall_stats_comp_m, aes(x=quantile_chr, y=value, fill=var_new)) + 
+  geom_bar(stat="identity",color="black", position = "dodge") + 
+  facet_wrap(~cancer_type, nrow = 10, scales = "free_y") + 
+  scale_fill_jco()
+```
+
+Можно заметить, что:
+
+ - для всех типов рака при выборе probability quantile не менее 2% прирост полноты и точности на урезанном наборе фичей не хуже, чем на всех фичах
+ - при выборе probability quantile менее 2% прирост полноты и точности на урезанном наборе фичей для одних типов рака выше, чем на всех признаках (brain, liver, uterus), для других - ниже (skin, pancreatic, blood), для остальных различия незначительны.
+
+0.03
+
+```{r fig.width=10}
+ggplot(recall_stats_comp_m %>% filter(quantile == 0.03), aes(x=cancer_type, y=value, fill=var_new)) + 
+  geom_bar(stat="identity", color="black", position = "dodge") + 
+  scale_fill_jco()
+```
+
+
+```{r}
+comp_rec_pl <- recall_stats_comp_m %>% 
+  filter(quantile == 0.03)
+
+comp_rec_pl[grep(x = comp_rec_pl$var_new, pattern = "prec"), "variable_type"] <- "lift_precision"
+comp_rec_pl[grep(x = comp_rec_pl$var_new, pattern = "recall"), "variable_type"] <- "lift_recall"
+
+g1 <- ggplot(comp_rec_pl, aes(x=cancer_type, y=value, fill=type)) +
+  geom_bar(stat='identity',  color="black", position = "dodge") +
+  facet_wrap(~variable_type,nrow = 2) +
+  scale_fill_jco() +
+    theme(
+      text = element_text(size = 8, family = "arial"),
+      axis.title.x = element_text(size = 10),
+      axis.title.y = element_text(size = 10),
+      legend.position="bottom", legend.title = element_text(size = 10),
+    ) +
+  xlab("Cancer type") +
+  ylab("value") +
+  labs(fill = "Feature set")
+g1
+
+# ggsave(filename = "Fig3.tiff", plot = g1, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 5, height = 3, scale = 2, compression = "lzw")
+```
+
+
+
+0.05
+
+```{r fig.width=10}
+ggplot(recall_stats_comp_m %>% filter(quantile == 0.05), aes(x=cancer_type, y=value, fill=var_new)) + 
+  geom_bar(stat="identity", color="black",position = "dodge") + 
+  scale_fill_jco()
+```
+
+На интересующих нас уровнях разметки - 0,03 и 0,05 - для blood, brain, liver за счет выбора важных фичей достигается значительно более высокое качество, чем при использовании всех фичей, в то время как для остальных типов рака отличия в приросте полноты и точности незначительны (удается достичь того же качества при маленьком наборе признаков).
+
+
+## Final feature importance
+
+```{r}
+best_features <- read.xlsx("../data/output/boruta_plus_sign_stats.xlsx", sheet = "hotspots_features")
+
+best_features$feature_n <- gsub(x=best_features$feature, pattern = "upper_", replacement = "")
+sec_str <- c("A_Phased_Repeat","Direct_Repeat", "Inverted_Repeat", "Mirror_Repeat","Short_Tandem_Repeat",
+             "G_quadruplex", "stemloops_16_50", "stemloops_6_15", "Z_DNA_Motif")
+reg <- c("X3UTR", "X5UTR", "codingExons", "downstream", "introns", "promoters", "WholeGenes")
+tad <- c("tad_boundaries_liver", "tad_boundaries_ovary", "tad_boundaries_pancreatic")
+chromatin <-c("cancer_skin_DNase_seq", "cancer_brain_DNase_seq", "cancer_blood_DNase_seq",
+              "cancer_prostate_DNase_seq", "cancer_pancreas_DNase_seq", "cancer_ovary_DNase_seq",
+              "cancer_liver_DNase_seq", "cancer_breast_DNase_seq", "cancer_uterus_DNase_seq",
+              "cancer_bone_DNase_seq")
+methyl <- c("cancer_brain_DNA_methylation", "cancer_breast_DNA_methylation",
+            "cancer_liver_DNA_methylation", "cancer_pancreas_DNA_methylation",
+            "cancer_skin_DNA_methylation", "cancer_uterus_DNA_methylation")
+histones <- c( "cancer_liver_H3K27ac.human", "cancer_uterus_H3K27ac.human", "cancer_blood_H3K27ac.human",
+               "cancer_brain_H3K27ac.human",
+               "cancer_pancreas_H3K27ac.human","cancer_blood_H3K27me3.human","cancer_brain_H3K27me3.human",    
+               "cancer_blood_H3K36me3.human","cancer_pancreas_H3K36me3.human","cancer_brain_H3K36me3.human",    
+               "cancer_pancreas_H3K4me1.human","cancer_blood_H3K4me1.human","cancer_brain_H3K4me1.human",
+               "cancer_breast_H3K4me3.human","cancer_uterus_H3K4me3.human","cancer_liver_H3K4me3.human",
+               "cancer_brain_H3K4me3.human","cancer_blood_H3K4me3.human","cancer_skin_H3K4me3.human",
+               "cancer_pancreas_H3K4me3.human","cancer_brain_H3K9me3.human","cancer_pancreas_H3K9me3.human",
+               "cancer_blood_H3K9me3.human" )
+tf <- c("cancer_liver_ATF3.human", "cancer_liver_CTCF.human", "cancer_pancreas_CTCF.human",
+        "cancer_liver_EGR1.human", "cancer_liver_FOXA1.human", "cancer_liver_FOXA2.human", 
+        "cancer_liver_GABPA.human","cancer_liver_HNF4A.human", "cancer_liver_HNF4G.human",
+        "cancer_liver_JUND.human","cancer_liver_MAX.human", "cancer_liver_NR2F2.human",
+        "cancer_liver_REST.human", "cancer_liver_RXRA.human", "cancer_liver_SP1.human",
+        "cancer_liver_YY1.human", "cancer_liver_ZBTB33.human")
+
+best_features$feature_group <- ifelse(
+  best_features$feature_n %in% sec_str, "sec_str",
+  ifelse(
+    best_features$feature_n %in% reg, "reg",
+    ifelse(
+      best_features$feature_n %in% tad, "tad",
+      ifelse(
+        best_features$feature_n %in% chromatin, "chromatin",
+        ifelse(
+          best_features$feature_n %in% methyl, "methyl",
+          ifelse(
+            best_features$feature_n %in% histones, "histones", "tf"
+        )
+        )
+      )
+    )
+  )
+)
+ord_f <- best_features %>% 
+  select(feature_group, feature_n, feature) %>%
+  unique() %>%
+  arrange(feature_group, feature_n, feature)
+
+best_features$feature_ord <- factor(best_features$feature, levels = ord_f$feature)
+```
+
+```{r fig.width=10, fig.height=7}
+ggplot(best_features, aes(x=cancer_type, y=feature_ord, fill=feature_group))+
+  geom_tile() + 
+  scale_fill_jco()
+```
+
+```{r}
+g2 <- ggplot(best_features, aes(x=cancer_type, y=feature_ord, fill=feature_group))+
+  geom_tile() + 
+  scale_fill_jco() +
+  theme(
+      text = element_text(size = 8, family = "arial"),
+      axis.title.x = element_text(size = 10),
+      axis.title.y = element_text(size = 10),
+      legend.title = element_text(size = 10),
+    ) +
+  xlab("Cancer type") + 
+  ylab("Feature") +
+  labs(fill = "Feature group")
+
+# ggsave(filename = "Fig4.tiff", plot = g2, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 5, height = 3, scale = 2, compression = "lzw")
+```
+
+
+Выводы:
+
+ - Есть типы рака, для которых важна только одна группа факторов из рассмотренных: brain (только вторичные структуры), liver (только транскрипционные факторы)
+ - Для рака груди было выбрано максимальное количество признаков - 23, и в них вошли все группы фичей
+ - Для остальных типов рака:
+   - blood - вторичные структуры + регионы + модификации гистонов
+   - bone - вторичные структуры + регионы + транскрипционные факторы + метилирование
+   - breast - вторичные структуры + регионы + транскрипционные факторы + метилирование + модификации гистонов + хроматин
+   - ovary - вторичные структуры + регионы + транскрипционные факторы
+   - pancreatic -  регионы + транскрипционные факторы
+   - prostate - вторичные структуры + регионы + транскрипционные факторы + метилирование
+   - skin - вторичные структуры + регионы + транскрипционные факторы + модификации гистонов 
+   - uterus - вторичные структуры + транскрипционные факторы + регионы + метилирование + хроматин
+
+```{r fig.width=10}
+feat_counts <- best_features %>%
+  group_by(feature, feature_group) %>%
+  summarize(
+    n_cancers = n_distinct(cancer_type)
+  )
+
+
+ggplot(feat_counts, aes(x=reorder(feature, n_cancers, median), y=n_cancers, fill=feature_group))+
+  geom_bar(stat="identity") + 
+  coord_flip() + 
+  scale_fill_jco()
+```
+
+Нет ни одного признака, важного для всех типов рака. Однако покрытие DirectRepeat верхнего уровня признано важным для 8 типов рака. Для половины типов рака выбран признак покрытие G-quadruplex верхнего уровня. В топ-10 важных признаков входят другие признаки по вторичным структурам, транскрипицонным факторам и регионам.
+

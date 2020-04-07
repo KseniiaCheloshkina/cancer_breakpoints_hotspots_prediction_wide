@@ -23,7 +23,9 @@ customYellow = 'yellow'
 customBlue = '#1E90FF'
 pal <- wes_palette("Zissou1", 100, type = "continuous")
 
-df <- read.csv("../data/output/boruta_res_100000.csv", row.names = 1, stringsAsFactors = F)
+source('run/tools.R')
+
+df <- read.csv("data/output/boruta_res_100000.csv", row.names = 1, stringsAsFactors = F)
 df <- unique(df)
 df %>%
   group_by(agg_level) %>%
@@ -153,6 +155,8 @@ df_stats$iter <- as.character(df_stats$iter)
 ggplot(df_stats, aes(x=max_iter, fill=iter, y=mean_n_selected)) + 
   geom_bar(stat="identity", color="black", position = "dodge")  + 
   scale_fill_jco()
+
+
 ```
 
 Typically, 2-3 features are selected if there were less than 5 iterations (or when relatively big number of features were removed at the beginning of the procedure). In contrast, when all 5 iterations were used, lower percent of features were removed ar each iteration and in average 9 features were finally selected.
@@ -310,9 +314,15 @@ df_hits_last_iter_agg_new <- df_hits_last_iter %>%
     n_best = n_distinct(resample, repeat.)
     )
 
-ggplot(df_hits_last_iter_agg_new, aes(x=cancer_type, y=n_best, fill=feature_group))+
+df_hits_last_iter_agg_new <- df_hits_last_iter_agg_new %>%
+  inner_join(
+    proper_feature_group_names,
+    by=c("feature_group" = "feature_group_name")
+  )
+
+ggplot(df_hits_last_iter_agg_new, aes(x=cancer_type, y=n_best, fill=feature_group_name_proper)) +
   geom_bar(stat="identity", color="black", position="dodge") + 
-  scale_fill_jco()
+  theme_light_custom()
 ```
 
 Выводы: 

@@ -1,6 +1,7 @@
 library(dplyr)
-
-
+library(ggplot2)
+library(caret)
+library(pROC)
 
 ############################## FUNCTION TO GET STRATIFIED TRAIN/TEST SPLIT
 ## INPUT: 
@@ -243,4 +244,40 @@ rf_fit <- function(x_train, y_train, trCtrl, n_pos, n_neg, mtryGrid){
   )
   
   return(model)
+}
+
+
+
+######### to rename feature groups for publication plots
+proper_feature_group_names <- data.frame(
+  feature_group_name = c("chromatin","histones","methyl", "tf", "reg", "sec_str", "tad"),
+  feature_group_name_proper = c("DNase", "HM", "methyl", "TF", "region", "non-B DNA", "TAD")
+)
+
+######### publication plots theme
+theme_light_custom <- function (scale_fill=TRUE) {
+  base_size <- 8
+  base_family <- "sans"
+  base_line_size <- base_size / 22
+  base_rect_size <- base_size / 22
+  half_line <- base_size / 2
+  th <- theme_light(base_size, base_family, base_line_size, base_rect_size) %+replace%
+    theme(
+      text = element_text(family = base_family, face = "plain",
+                          colour = "black", size = base_size,
+                          lineheight = 0.9, hjust = 0.5, vjust = 0.5, angle = 0,
+                          margin = margin(), debug = FALSE, inherit.blank = TRUE
+                          ),
+      axis.title.x = element_text(margin = margin(t = 2.75),
+                                  vjust = 1, size = 10, inherit.blank = T),
+      axis.title.y = element_text(angle = 90, margin = margin(r = 2.75),
+                                  vjust = 1, size = 10),
+      legend.position = "bottom",
+      legend.title = element_text(hjust = 0, size = 10),
+      )
+  if (scale_fill) {
+    return(list(th, scale_fill_jco()))
+  }
+  else return(th)
+
 }

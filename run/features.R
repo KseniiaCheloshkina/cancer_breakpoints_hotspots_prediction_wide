@@ -115,4 +115,118 @@ get_maximum_features <- function(data, features_cols){
   return(data)  
 }
 
+get_feature_df <- function(features_cols){
 
+  # get groups of features
+  sec_str <- c("A_Phased_Repeat","Direct_Repeat", "Inverted_Repeat", "Mirror_Repeat","Short_Tandem_Repeat",
+               "G_quadruplex", "stemloops_16_50", "stemloops_6_15", "Z_DNA_Motif")
+  all_sec_str <- vector()
+  for (feat in features_cols){
+    for (col in sec_str){
+      all_sec_str <- c(all_sec_str, grep(x = feat, pattern = col, value = TRUE))  
+    }
+  }
+  
+  reg <- c("X3UTR", "X5UTR", "codingExons", "downstream", "introns", "promoters", "WholeGenes")
+  all_reg <- vector()
+  for (feat in features_cols){
+    for (col in reg){
+      all_reg <- c(all_reg, grep(x = feat, pattern = col, value = TRUE))  
+    }
+  }
+  
+  tad <- c("tad_boundaries_liver", "tad_boundaries_ovary", "tad_boundaries_pancreatic")
+  all_tad <- vector()
+  for (feat in features_cols){
+    for (col in tad){
+      all_tad <- c(all_tad, grep(x = feat, pattern = col, value = TRUE))  
+    }
+  }
+  
+  chromatin <-c("cancer_skin_DNase_seq", "cancer_brain_DNase_seq", "cancer_blood_DNase_seq",
+                "cancer_prostate_DNase_seq", "cancer_ovary_DNase_seq",
+                "cancer_liver_DNase_seq", "cancer_breast_DNase_seq", "cancer_uterus_DNase_seq",
+                "cancer_bone_DNase_seq")
+  all_chromatin <- vector()
+  for (feat in features_cols){
+    for (col in chromatin){
+      all_chromatin <- c(all_chromatin, grep(x = feat, pattern = col, value = TRUE))  
+    }
+  }
+  
+  methyl <- c("cancer_brain_DNA_methylation", "cancer_breast_DNA_methylation",
+              "cancer_liver_DNA_methylation",
+              "cancer_skin_DNA_methylation", "cancer_uterus_DNA_methylation")
+  all_methyl <- vector()
+  for (feat in features_cols){
+    for (col in methyl){
+      all_methyl <- c(all_methyl, grep(x = feat, pattern = col, value = TRUE))  
+    }
+  }
+  
+  histones <- c( "cancer_liver_H3K27ac.human", "cancer_uterus_H3K27ac.human", "cancer_blood_H3K27ac.human",
+                 "cancer_brain_H3K27ac.human","cancer_blood_H3K27me3.human","cancer_brain_H3K27me3.human",    
+                 "cancer_blood_H3K36me3.human","cancer_brain_H3K36me3.human",    
+                 "cancer_blood_H3K4me1.human","cancer_brain_H3K4me1.human",
+                 "cancer_breast_H3K4me3.human","cancer_uterus_H3K4me3.human","cancer_liver_H3K4me3.human",
+                 "cancer_brain_H3K4me3.human","cancer_blood_H3K4me3.human","cancer_skin_H3K4me3.human",
+                 "cancer_brain_H3K9me3.human",
+                 "cancer_blood_H3K9me3.human" )
+  all_histones <- vector()
+  for (feat in features_cols){
+    for (col in histones){
+      all_histones <- c(all_histones, grep(x = feat, pattern = col, value = TRUE))  
+    }
+  }
+  
+  tf <- c("cancer_liver_ATF3.human", "cancer_liver_CTCF.human",
+          "cancer_liver_EGR1.human", "cancer_liver_FOXA1.human", "cancer_liver_FOXA2.human", 
+          "cancer_liver_GABPA.human","cancer_liver_HNF4A.human", "cancer_liver_HNF4G.human",
+          "cancer_liver_JUND.human","cancer_liver_MAX.human", "cancer_liver_NR2F2.human",
+          "cancer_liver_REST.human", "cancer_liver_RXRA.human", "cancer_liver_SP1.human",
+          "cancer_liver_YY1.human", "cancer_liver_ZBTB33.human")
+  all_tf <- vector()
+  for (feat in features_cols){
+    for (col in tf){
+      all_tf <- c(all_tf, grep(x = feat, pattern = col, value = TRUE))  
+    }
+  }
+  feat_group_df <- rbind(
+    data.frame(
+      feature_group=c("tf"),
+      color=c("#8F7700FF"),
+      feature=all_tf
+    ),
+    data.frame(
+      feature_group=c("histones"),
+      color=c("#EFC000FF"),
+      feature=all_histones
+    ),
+    data.frame(
+      feature_group=c("methyl"),
+      color=c("#868686FF"),
+      feature=all_methyl
+    ),
+    data.frame(
+      feature_group=c("chromatin"),
+      color=c("#0073C2FF"),
+      feature=all_chromatin
+    ),
+    data.frame(
+      feature_group=c("tad"),
+      color=c("#003С67FF"),
+      feature=all_tad
+    ),
+    data.frame(
+      feature_group=c("reg"),
+      color=c("#7AA6DCFF"),
+      feature=all_reg
+    ),
+    data.frame(
+      feature_group=c("sec_str"),
+      color=c("#A73030FF"),
+      feature=all_sec_str
+    )
+  )
+  return(feat_group_df)
+}

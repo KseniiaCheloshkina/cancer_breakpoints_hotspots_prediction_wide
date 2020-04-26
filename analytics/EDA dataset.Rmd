@@ -3,12 +3,12 @@ title: "EDA dataset"
 author: "Cheloshkina K"
 date: "14 09 2019"
 output:
+  html_notebook: default
   html_document:
     df_print: paged
     fig_caption: yes
     fig_height: 8
     fig_width: 10
-  html_notebook: default
   pdf_document: default
 ---
 
@@ -582,3 +582,602 @@ hs_q %>%
   arrange(min_q)
 
 ```
+
+
+
+
+
+```{r fig.height=7, fig.width=10}
+source("../run/features.R")
+source("../run/tools.R")
+data_path <- "../data/datasets/"
+data <- read.csv(
+  paste0(data_path, "dataset_", format(win_len, scientific = FALSE), ".csv")
+  )
+hsp_cols <- grep(x = names(data), pattern = "hsp", value = TRUE)
+conserved_features <- c(
+  "A_Phased_Repeat", "Direct_Repeat", 
+  "Inverted_Repeat", "Mirror_Repeat", "Short_Tandem_Repeat", 
+  "Z_DNA_Motif", "G_quadruplex", 
+  "stemloops_16_50", "stemloops_6_15", 
+  "X3UTR", "X5UTR", "codingExons", "downstream", "introns", "promoters", "WholeGenes", 
+  "tad_boundaries_liver", "tad_boundaries_ovary", "tad_boundaries_pancreatic",
+  
+  "cancer_liver_ATF3.human", "cancer_liver_CTCF.human", "cancer_liver_EGR1.human",
+  "cancer_liver_FOXA1.human", "cancer_liver_FOXA2.human", "cancer_liver_GABPA.human",
+  "cancer_liver_HNF4A.human", "cancer_liver_HNF4G.human", "cancer_liver_JUND.human",
+  "cancer_liver_MAX.human", "cancer_liver_NR2F2.human", "cancer_liver_REST.human",
+  "cancer_liver_RXRA.human", "cancer_liver_SP1.human", "cancer_liver_YY1.human",
+  "cancer_liver_ZBTB33.human"
+)
+tissue_spec_feats <- setdiff(names(data), c("chr","from","to", hsp_cols, conserved_features))
+
+ss_cols <- c ("chr", "from", "to")
+features_cols <- c(conserved_features, tissue_spec_feats)
+win_len_upper <- 1000000
+all_data <- get_higher_level_features(data=data, features_cols = features_cols, 
+                                           win_len_upper = win_len_upper,
+                                           path_to_upper_data = paste0(data_path, "dataset_",
+                                                                       format(win_len_upper, scientific = FALSE), ".csv"))
+
+hsp_cols <- grep(x = hsp_cols, pattern = "_99._", value = TRUE)
+
+all_data$from_mb <- all_data$from / 1000000
+all_data$to_mb <- all_data$to / 1000000
+
+df_f <- get_feature_df(names(all_data))
+```
+
+## DNase seq
+
+```{r}
+chr_cols <- as.character(df_f[df_f$feature_group == "chromatin", "feature"])
+upper_chr_cols <- paste0("upper_", chr_cols)
+melted <- melt(data = all_data[c("chr", "from_mb", as.character(chr_cols), as.character(upper_chr_cols))], id.vars = c("chr", "from_mb"))
+
+melted$cancer <-  gsub(
+  x = gsub(
+    x = gsub(x = melted$variable, pattern = "cancer_", replacement = ""), 
+    pattern = "_DNase_seq", replacement = ""),
+  pattern = "upper_", replacement = "")
+
+max_dens <- melted %>%
+  group_by(cancer, chr) %>%
+  summarize(
+    max_v = max(value),
+    min_v = min(value)
+  )
+
+melted_target <- melt(data = all_data[c("chr", "from_mb", "to_mb", hsp_cols)], id.vars = c("chr", "to_mb","from_mb"))
+melted_target <- melted_target[melted_target$value == 1, ]
+melted_target$cancer <- gsub(x = melted_target$variable, pattern = "hsp_99._", replacement = "")
+melted_target <- melted_target %>%
+  left_join(max_dens, by = c("chr", "cancer"))
+
+melted$variable_type <- "standard"
+melted$variable_type[melted$variable %in% upper_chr_cols] <- "upper"
+```
+
+### Standard 
+
+```{r}
+ggplot(melted[(melted$chr == "1") & (melted$variable_type  == "standard"), ],  aes(x=from_mb, y=value, color=variable))+
+  facet_wrap(~chr, scales="free", ncol=1) + 
+  geom_line() + 
+  theme_light_custom()+
+  scale_color_jco()+
+  geom_vline(xintercept = melted_target[(melted_target$chr == "1") , "from_mb"],
+             color="grey20")
+```
+
+
+```{r fig.height=10}
+ggplot(melted[(melted$chr == "1") & (melted$variable_type  == "standard"), ],  aes(x=from_mb, y=value, color=variable))+
+  facet_wrap(~cancer, scales="free", ncol=1) + 
+  geom_line() + 
+  theme_light_custom()+
+  scale_color_jco()+
+  geom_vline(data=melted_target[(melted_target$chr == "1"), ], aes(xintercept = from_mb), color="grey20")
+```
+
+
+```{r fig.height=10}
+ggplot(melted[(melted$chr == "16")& (melted$variable_type  == "standard"), ],  aes(x=from_mb, y=value, color=variable))+
+  facet_wrap(~cancer, scales="free", ncol=1) + 
+  geom_line() + 
+  theme_light_custom()+
+  scale_color_jco()+
+  geom_vline(data=melted_target[(melted_target$chr == "16"), ], aes(xintercept = from_mb), color="grey20")
+```
+```{r fig.height=10}
+ggplot(melted[(melted$chr == "17") & (melted$variable_type  == "standard"), ],  aes(x=from_mb, y=value, color=variable))+
+  facet_wrap(~cancer, scales="free", ncol=1) + 
+  geom_line() + 
+  theme_light_custom()+
+  scale_color_jco()+
+  geom_vline(data=melted_target[(melted_target$chr == "17"), ], aes(xintercept = from_mb), alpha=0.5, color="grey20")
+```
+
+DNase-seq bone, uterus upper
+
+```{r}
+melted_target[(melted_target$chr == "1") & (melted_target$cancer == "bone"), ]
+```
+
+```{r}
+ggplot(melted[(melted$chr == "17") & ((melted$cancer %in% c("bone", "uterus"))), ],  aes(x=from_mb, y=value, color=variable))+
+  facet_wrap(~cancer, scales="free", ncol=1) + 
+  geom_line() + 
+  theme_light_custom()+
+  scale_color_jco()+
+  geom_vline(data=melted_target[(melted_target$chr == "17")& (melted_target$cancer %in% c("bone", "uterus")), ], aes(xintercept = from_mb), alpha=0.5, color="grey20")
+```
+
+```{r fig.height=7}
+all_data_melted <- melted %>%
+  left_join(
+    melted_target, by=c("chr", "from_mb", "cancer")
+  ) %>%
+  mutate(
+    value.y = ifelse(is.na(value.y), 0, value.y)
+  )
+
+ggplot(all_data_melted, aes(x=cancer, y=value.x, fill=as.character(value.y)))+
+  geom_boxplot() +
+  facet_wrap(~cancer, scales="free", ncol=5)+
+  theme_light_custom()
+```
+
+
+```{r}
+by_cancer <- all_data_melted %>%
+  group_by(cancer, value.y) %>%
+  summarize(
+    min_v = min(value.x),
+    q25 = quantile(value.x, 0.25),
+    med_v = median(value.x),
+    mean_v = mean(value.x),
+    q75 = quantile(value.x, 0.75),
+    max_v = max(value.x)
+  )
+
+by_cancer_chr <- all_data_melted %>%
+  left_join(
+    melted_target, by=c("chr", "from_mb", "cancer")
+  ) %>%
+  mutate(
+    value.y = ifelse(is.na(value.y), 0, value.y)
+  ) %>%
+  group_by(cancer, chr, value.y) %>%
+  summarize(
+    min_v = min(value.x),
+    q25 = quantile(value.x, 0.25),
+    med_v = median(value.x),
+    mean_v = mean(value.x),
+    q75 = quantile(value.x, 0.75),
+    max_v = max(value.x),
+    n_p = n()
+  )
+by_cancer_chr %>%
+  filter(n_p > 10)  %>%
+    select(cancer, chr, med_v, value.y) %>%
+  dcast(cancer + chr ~ value.y, value.var = "med_v") %>%
+  mutate(
+    ratio = `1`/`0`
+  ) %>%
+  arrange(desc(ratio))
+
+```
+
+```{r}
+by_cancer %>%
+  select(cancer, med_v, value.y) %>%
+  dcast(cancer ~ value.y, value.var = "med_v") %>%
+  mutate(
+    ratio = `1`/`0`
+  ) %>%
+  arrange(desc(ratio))
+
+```
+
+```{r fig.height=10}
+ggplot(melted[(melted$chr == "9") & (melted$variable_type  == "upper"), ],  aes(x=from_mb, y=value, color=variable))+
+  facet_wrap(~cancer, scales="free", ncol=1) + 
+  geom_line() + 
+  theme_light_custom()+
+  scale_color_jco()+
+  geom_vline(data=melted_target[(melted_target$chr == "9"), ], aes(xintercept = from_mb), alpha=0.5, color="grey20")
+```
+
+```{r fig.height=10}
+ggplot(melted[(melted$chr == "21") & (melted$variable_type  == "upper"), ],  aes(x=from_mb, y=value, color=variable))+
+  facet_wrap(~cancer, scales="free", ncol=1) + 
+  geom_line() + 
+  theme_light_custom()+
+  scale_color_jco()+
+  geom_vline(data=melted_target[(melted_target$chr == "21"), ], aes(xintercept = from_mb), alpha=0.5, color="grey20")
+```
+
+
+```{r fig.height=10}
+ggplot(melted[(melted$chr == "21") & (melted$variable_type  == "standard"), ],  aes(x=from_mb, y=value, color=variable))+
+  facet_wrap(~cancer, scales="free", ncol=1) + 
+  geom_line() + 
+  theme_light_custom()+
+  scale_color_jco()+
+  geom_vline(data=melted_target[(melted_target$chr == "21"), ], aes(xintercept = from_mb), alpha=0.5, color="grey20")
+```
+
+```{r fig.height=10}
+ggplot(melted[(melted$chr == "14") & (melted$variable_type  == "upper"), ],  aes(x=from_mb, y=value, color=variable))+
+  facet_wrap(~cancer, scales="free", ncol=1) + 
+  geom_line() + 
+  theme_light_custom()+
+  scale_color_jco()+
+  geom_vline(data=melted_target[(melted_target$chr == "14"), ], aes(xintercept = from_mb), alpha=0.5, color="grey20")
+```
+
+
+## non-B DNA
+
+```{r}
+chr_cols <- as.character(df_f[df_f$feature_group == "sec_str", "feature"])
+upper_chr_cols <- chr_cols[grep(x = chr_cols, pattern="upper")]
+chr_cols <- chr_cols[-grep(x = chr_cols, pattern="upper")]
+melted <- melt(data = all_data[c("chr", "from_mb", as.character(chr_cols), as.character(upper_chr_cols))], id.vars = c("chr", "from_mb"))
+
+max_dens <- melted %>%
+  group_by(chr) %>%
+  summarize(
+    max_v = max(value),
+    min_v = min(value)
+  )
+
+melted_target <- melt(data = all_data[c("chr", "from_mb", "to_mb", hsp_cols)], id.vars = c("chr", "to_mb","from_mb"))
+melted_target <- melted_target[melted_target$value == 1, ]
+melted_target$cancer <- gsub(x = melted_target$variable, pattern = "hsp_99._", replacement = "")
+melted_target <- melted_target %>%
+  left_join(max_dens, by = c("chr"))
+
+melted$variable_type <- "standard"
+melted$variable_type[melted$variable %in% upper_chr_cols] <- "upper"
+```
+
+
+
+```{r fig.height=20, fig.width=8}
+all_data_melted <- data.frame()
+for (canc in unique(melted_target$cancer)){
+  all_data_melted <- rbind.data.frame(
+    all_data_melted,
+    melted %>%
+      left_join(
+        melted_target %>%
+          filter(cancer == canc), 
+        by=c("chr", "from_mb")
+  ) %>%
+    mutate(
+      value.y = ifelse(is.na(value.y), 0, value.y),
+      cancer = canc
+  )
+  )
+}
+  
+ggplot(all_data_melted[all_data_melted$variable_type == "standard", ], aes(x=cancer, y=value.x, fill=as.character(value.y)))+
+  facet_wrap(~variable.x, scales="free", ncol=1)+
+  geom_boxplot() +
+  theme_light_custom()
+```
+
+
+```{r fig.height=20, fig.width=8}
+ggplot(all_data_melted[all_data_melted$variable_type == "upper", ], aes(x=cancer, y=value.x, fill=as.character(value.y)))+
+  facet_wrap(~variable.x, scales="free", ncol=1)+
+  geom_boxplot() +
+  theme_light_custom()
+```
+  
+```{r}
+by_cancer <- all_data_melted %>%
+  group_by(cancer, variable.x, value.y) %>%
+  summarize(
+    min_v = min(value.x),
+    q25 = quantile(value.x, 0.25),
+    med_v = median(value.x),
+    mean_v = mean(value.x),
+    q75 = quantile(value.x, 0.75),
+    max_v = max(value.x)
+  )
+
+by_cancer_chr <- all_data_melted %>%
+  group_by(cancer, chr, variable.x, value.y) %>%
+  summarize(
+    min_v = min(value.x),
+    q25 = quantile(value.x, 0.25),
+    med_v = median(value.x),
+    mean_v = mean(value.x),
+    q75 = quantile(value.x, 0.75),
+    max_v = max(value.x),
+    n_p = n()
+  )
+by_cancer_chr %>%
+  filter(n_p > 10)  %>%
+    select(cancer, chr, variable.x, q75, value.y) %>%
+  dcast(cancer + chr + variable.x ~ value.y, value.var = "q75") %>%
+  mutate(
+    ratio = `1`/`0`
+  ) %>%
+  arrange(desc(ratio))
+
+```
+
+```{r fig.height=10}
+var_name <- "G_quadruplex"
+
+ggplot(melted[(melted$chr == "13") & (melted$variable  %in% c(var_name, paste0("upper_", var_name))), ],  aes(x=from_mb, y=value, color=variable))+
+  facet_wrap(~cancer, scales="free", ncol=1) + 
+  geom_line() + 
+  theme_light_custom()+
+  scale_color_jco()+
+  geom_vline(data=melted_target[(melted_target$chr == "13"), ], aes(xintercept = from_mb), alpha=0.5, color="grey20")
+```
+
+```{r fig.height=10}
+var_name <- "G_quadruplex"
+
+ggplot(melted[(melted$chr == "11") & (melted$variable  %in% c(var_name, paste0("upper_", var_name))), ],  aes(x=from_mb, y=value, color=variable))+
+  facet_wrap(~cancer, scales="free", ncol=1) + 
+  geom_line() + 
+  theme_light_custom()+
+  scale_color_jco()+
+  geom_vline(data=melted_target[(melted_target$chr == "11"), ], aes(xintercept = from_mb), alpha=0.5, color="grey20")
+```
+
+```{r fig.height=10}
+var_name <- "G_quadruplex"
+
+ggplot(melted[(melted$chr == "9") & (melted$variable  %in% c(var_name, paste0("upper_", var_name))), ],  aes(x=from_mb, y=value, color=variable))+
+  facet_wrap(~cancer, scales="free", ncol=1) + 
+  geom_line() + 
+  theme_light_custom()+
+  scale_color_jco()+
+  geom_vline(data=melted_target[(melted_target$chr == "9"), ], aes(xintercept = from_mb), alpha=0.5, color="grey20")
+```
+
+
+
+```{r}
+by_cancer %>%
+  select(cancer, variable.x, med_v, value.y) %>%
+  dcast(cancer + variable.x ~ value.y, value.var = "med_v") %>%
+  mutate(
+    ratio = `1`/`0`
+  ) %>%
+  arrange(desc(ratio))
+
+```
+
+```{r fig.height=10}
+var_name <- "G_quadruplex"
+
+ggplot(melted[(melted$chr == "14") & (melted$variable  %in% c(var_name, paste0("upper_", var_name))), ],  aes(x=from_mb, y=value, color=variable))+
+  facet_wrap(~cancer, scales="free", ncol=1) + 
+  geom_line() + 
+  theme_light_custom()+
+  scale_color_jco()+
+  geom_vline(data=melted_target[(melted_target$chr == "14"), ], aes(xintercept = from_mb), alpha=0.5, color="grey20")
+```
+
+
+```{r fig.height=10}
+var_name <- "Direct_Repeat"
+
+ggplot(melted[(melted$chr == "13") & (melted$variable  %in% c(var_name, paste0("upper_", var_name))), ],  aes(x=from_mb, y=value, color=variable))+
+  facet_wrap(~cancer, scales="free", ncol=1) + 
+  geom_line() + 
+  theme_light_custom()+
+  scale_color_jco()+
+  geom_vline(data=melted_target[(melted_target$chr == "13"), ], aes(xintercept = from_mb), alpha=0.5, color="grey20")
+```
+
+
+```{r}
+ggplot(melted[(melted$chr == "13") & (melted$from_mb >= 40) &  (melted$from_mb <= 60) & (melted$variable_type =="upper"), ],  aes(x=from_mb, y=value, color=variable))+
+  facet_wrap(~variable, scales="free")+
+  geom_line() + 
+  theme_light_custom()+
+  scale_color_jco()+
+  geom_vline(xintercept=melted_target[(melted_target$chr == "13") & (melted_target$cancer == "liver")  & (melted_target$from_mb >= 40) &  (melted_target$from_mb <= 60), "from_mb" ], alpha=0.5, color="grey20")
+```
+
+```{r}
+ggplot(melted[(melted$chr == "13") & (melted$from_mb >= 40) &  (melted$from_mb <= 60) & (melted$variable_type =="standard"), ],  aes(x=from_mb, y=value, color=variable))+
+  facet_wrap(~variable, scales="free")+
+  geom_line() + 
+  theme_light_custom()+
+  scale_color_jco()+
+  geom_vline(xintercept=melted_target[(melted_target$chr == "13") & (melted_target$cancer == "liver")  & (melted_target$from_mb >= 40) &  (melted_target$from_mb <= 60), "from_mb" ], alpha=0.5, color="grey20")
+```
+```{r fig.height=10, fig.width=8}
+var_name <- "Direct_Repeat"
+
+ggplot(melted[(melted$chr == "13") & (melted$from_mb >= 40) &  (melted$from_mb <= 60) & (melted$variable  %in% c(var_name, paste0("upper_", var_name))), ],  aes(x=from_mb, y=value, color=variable))+
+  facet_wrap(~cancer, scales="free", ncol=1) + 
+  geom_line() + 
+  theme_light_custom()+
+  scale_color_jco()+
+  geom_vline(data=melted_target[(melted_target$chr == "13") & (melted_target$from_mb >= 40) &  (melted_target$from_mb <= 60), ], aes(xintercept = from_mb), alpha=0.5, color="grey20")
+```
+
+
+```{r fig.height=10, fig.width=8}
+var_name <- "Mirror_Repeat"
+
+ggplot(melted[(melted$chr == "13") & (melted$from_mb >= 40) &  (melted$from_mb <= 60) & (melted$variable  %in% c(var_name, paste0("upper_", var_name))), ],  aes(x=from_mb, y=value, color=variable))+
+  facet_wrap(~cancer, scales="free", ncol=1) + 
+  geom_line() + 
+  theme_light_custom()+
+  scale_color_jco()+
+  geom_vline(data=melted_target[(melted_target$chr == "13") & (melted_target$from_mb >= 40) &  (melted_target$from_mb <= 60), ], aes(xintercept = from_mb), alpha=0.5, color="grey20")
+```
+
+```{r fig.height=10, fig.width=8}
+var_name <- "Z_DNA_Motif"
+
+ggplot(melted[(melted$chr == "13") & (melted$from_mb >= 40) &  (melted$from_mb <= 60) & (melted$variable  %in% c(var_name, paste0("upper_", var_name))), ],  aes(x=from_mb, y=value, color=variable))+
+  facet_wrap(~cancer, scales="free", ncol=1) + 
+  geom_line() + 
+  theme_light_custom()+
+  scale_color_jco()+
+  geom_vline(data=melted_target[(melted_target$chr == "13") & (melted_target$from_mb >= 40) &  (melted_target$from_mb <= 60), ], aes(xintercept = from_mb), alpha=0.5, color="grey20")
+```
+
+```{r fig.height=10, fig.width=8}
+var_name <- "G_quadruplex"
+
+ggplot(melted[(melted$chr == "13") & (melted$from_mb >= 40) &  (melted$from_mb <= 60) & (melted$variable  %in% c(var_name, paste0("upper_", var_name))), ],  aes(x=from_mb, y=value, color=variable))+
+  facet_wrap(~cancer, scales="free", ncol=1) + 
+  geom_line() + 
+  theme_light_custom()+
+  scale_color_jco()+
+  geom_vline(data=melted_target[(melted_target$chr == "13") & (melted_target$from_mb >= 40) &  (melted_target$from_mb <= 60), ], aes(xintercept = from_mb), alpha=0.5, color="grey20")
+```
+
+```{r fig.height=10, fig.width=8}
+var_name <- c("G_quadruplex", "Z_DNA_Motif")
+
+g1 <- ggplot(
+  melted[(melted$chr == "13") & (melted$from_mb >= 40) &  (melted$from_mb <= 60) & (melted$variable  %in% var_name), ],
+  aes(x=from_mb, y=value, color=variable))+
+  facet_wrap(~cancer, scales="free", ncol=1) + 
+  geom_line() + 
+  theme_light_custom()+
+  scale_color_jco()+
+  geom_vline(
+    data=melted_target[(melted_target$chr == "13") & (melted_target$from_mb >= 40) &  (melted_target$from_mb <= 60), ],
+    aes(xintercept = from_mb), alpha=0.5, color="grey20")+
+  xlab("Position, Mb") + 
+  labs(color="Feature") +
+  ylab("Coverage")
+
+# ggsave(filename = "F_imp2a.tiff", plot = g1, device = "tiff", path = "../paper_materials/supplementary figures/", dpi = 600, units = "in", width = 6, height = 3, scale = 2, compression = "lzw")
+```
+
+```{r fig.height=10, fig.width=8}
+var_name <- c("Mirror_Repeat", "Direct_Repeat", "stemloops_16_50", "Short_Tandem_Repeat")
+
+g2 <- ggplot(
+  melted[(melted$chr == "13") & (melted$from_mb >= 40) &  (melted$from_mb <= 60) & (melted$variable  %in% var_name), ],
+  aes(x=from_mb, y=value, color=variable))+
+  facet_wrap(~cancer, scales="free", ncol=1) + 
+  geom_line() + 
+  theme_light_custom()+
+  scale_color_jco()+
+  geom_vline(
+    data=melted_target[(melted_target$chr == "13") & (melted_target$from_mb >= 40) &  (melted_target$from_mb <= 60), ],
+    aes(xintercept = from_mb), alpha=0.5, color="grey20")+
+    xlab("Position, Mb") + 
+  labs(color="Feature") +
+  ylab("Coverage")
+
+# ggsave(filename = "F_imp3.tiff", plot = g2, device = "tiff", path = "../paper_materials/supplementary figures/", dpi = 600, units = "in", width = 6, height = 5, scale = 2, compression = "lzw")
+```
+
+
+```{r}
+ggplot(melted[(melted$chr == "11") & (melted$from_mb >= 55) &  (melted$from_mb <= 80) & (melted$variable_type =="upper"), ],  aes(x=from_mb, y=value, color=variable))+
+  facet_wrap(~variable, scales="free")+
+  geom_line() + 
+  theme_light_custom()+
+  scale_color_jco()+
+  geom_vline(xintercept=melted_target[(melted_target$chr == "11") & (melted_target$cancer == "breast")  & (melted_target$from_mb >= 55) &  (melted_target$from_mb <= 80), "from_mb" ], alpha=0.5, color="grey20")
+```
+
+```{r fig.height=10, fig.width=8}
+var_name <- c("G_quadruplex", "Z_DNA_Motif", "Mirror_Repeat", "Direct_Repeat")
+# var_name <- c("upper_G_quadruplex", "upper_Z_DNA_Motif", "upper_Mirror_Repeat", "upper_Direct_Repeat")
+d <- melted[(melted$chr == "11") & (melted$from_mb >= 60) &  (melted$from_mb <= 80) & (melted$variable  %in% var_name), ]
+d[d$variable %in% c("G_quadruplex", "Z_DNA_Motif"), "value"] <- d[d$variable %in% c("G_quadruplex", "Z_DNA_Motif"), "value"]
+ggplot(
+  d,
+  aes(x=from_mb, y=value, color=variable))+
+  facet_wrap(~cancer, scales="free", ncol=1) + 
+  geom_line() + 
+  theme_light_custom()+
+  scale_color_jco()+
+  geom_vline(
+    data=melted_target[(melted_target$chr == "11") & (melted_target$from_mb >= 60) &  (melted_target$from_mb <= 80), ],
+    aes(xintercept = from_mb), alpha=0.5, color="grey20")
+```
+
+
+```{r fig.height=10, fig.width=8}
+# var_name <- c("G_quadruplex", "Z_DNA_Motif", "Mirror_Repeat", "Direct_Repeat")
+var_name <- c("upper_G_quadruplex", "upper_Z_DNA_Motif", "upper_Mirror_Repeat", "upper_Direct_Repeat")
+d <- melted[(melted$chr == "11") & (melted$from_mb >= 60) &  (melted$from_mb <= 80) & (melted$variable  %in% var_name), ]
+d[d$variable %in% c("G_quadruplex", "Z_DNA_Motif"), "value"] <- d[d$variable %in% c("G_quadruplex", "Z_DNA_Motif"), "value"]
+ggplot(
+  d,
+  aes(x=from_mb, y=value, color=variable))+
+  facet_wrap(~cancer, scales="free", ncol=1) + 
+  geom_line() + 
+  theme_light_custom()+
+  scale_color_jco()+
+  geom_vline(
+    data=melted_target[(melted_target$chr == "11") & (melted_target$from_mb >= 60) &  (melted_target$from_mb <= 80), ],
+    aes(xintercept = from_mb), alpha=0.5, color="grey20")
+```
+
+```{r}
+ggplot(melted[(melted$chr == "11") & (melted$from_mb >= 55) &  (melted$from_mb <= 80) & (melted$variable_type =="upper"), ],  aes(x=from_mb, y=value, color=variable))+
+  facet_wrap(~variable, scales="free")+
+  geom_line() + 
+  theme_light_custom()+
+  scale_color_jco()+
+  geom_vline(xintercept=melted_target[(melted_target$chr == "11") & (melted_target$cancer == "breast")  & (melted_target$from_mb >= 55) &  (melted_target$from_mb <= 80), "from_mb" ], alpha=0.5, color="grey20")
+```
+
+```{r}
+g3 <- ggplot(melted[(melted$chr == "11") & (melted$from_mb >= 55) &  (melted$from_mb <= 80) & (melted$variable_type =="upper") &
+                !(melted$variable %in% c("upper_A_Phased_Repeat", "upper_stemloops_16_50","upper_stemloops_6_15")), ],  aes(x=from_mb, y=value, color=variable))+
+  facet_wrap(~variable, scales="free")+
+  geom_line() + 
+  theme_light_custom()+
+  scale_color_jco()+
+  geom_vline(xintercept=melted_target[(melted_target$chr == "11") & (melted_target$cancer == "breast")  & (melted_target$from_mb >= 55) &  (melted_target$from_mb <= 80), "from_mb" ], alpha=0.5, color="grey20")+
+  xlab("Position, Mb") + 
+  labs(color="Feature") +
+  ylab("Coverage")
+```
+
+```{r}
+g4 <- ggplot(
+  melted[
+    (melted$chr == "11") & (melted$from_mb >= 55) &  (melted$from_mb <= 80) & (melted$variable_type =="standard") &
+      !(melted$variable %in% c("A_Phased_Repeat", "stemloops_16_50","stemloops_6_15")), ],  
+  aes(x=from_mb, y=value, color=variable))+
+  facet_wrap(~variable, scales="free")+
+  geom_line() + 
+  theme_light_custom()+
+  scale_color_jco()+
+  geom_vline(xintercept=melted_target[(melted_target$chr == "11") & (melted_target$cancer == "breast")  & (melted_target$from_mb >= 55) &  (melted_target$from_mb <= 80), "from_mb" ], alpha=0.5, color="grey20") + 
+  xlab("Position, Mb") + 
+  labs(color="Feature") +
+  ylab("Coverage")
+library(ggpubr)
+g_f <- ggarrange(g4, g3,  
+          labels = c("A", "B"),
+          ncol = 1, nrow = 2, heights = c(1, 1),
+          font.label = list(size = 10, color = "black", face ="bold"))
+# ggsave(filename = "F_imp1.tiff", plot = g_f, device = "tiff", path = "../paper_materials/supplementary figures/", dpi = 600, units = "in", width = 6, height = 5, scale = 2, compression = "lzw")
+
+```
+
+Permutation tests
+
+Один набор - 1 хромосома 1 типа рака
+Для каждого набора считаем pvalue
+Строим гистограмму pvalue по каждому типу рака (1 наблюдение - pvalue для 1 набора)
+Далее можно для каждого типа рака наложить такие гистограммы для раных признаков - и увидим силу ассоциации
+
+

@@ -1,0 +1,469 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(dplyr)
+library(reshape2)
+
+library(ggplot2)
+library(wesanderson)
+library(ggsci)
+library(ggpubr)
+
+library(openxlsx)
+
+library(formattable)
+
+customYellow = 'yellow'
+customBlue = '#1E90FF'
+pal <- wes_palette("Zissou1", 100, type = "continuous")
+
+source('../run/tools.R')
+source('../run/features.R')
+
+colors <- as.character(proper_feature_group_names$colors)
+names(colors) <- as.character(proper_feature_group_names$feature_group_name_proper)
+
+# load new data
+data_path <- "../data/output/stepwise_addition/"
+fs <- read.csv(paste0(data_path, "result_features_selected_100000.csv"), row.names = 1, stringsAsFactors = F)
+fs0 <- read.csv(paste0(data_path, "result_features_selected_100000_0.csv"), row.names = 1, stringsAsFactors = F)
+fs <- rbind(fs0, fs)
+fs$agg_level[fs$agg_level == "99"] <- "99."
+
+roc_auc <- read.csv(paste0(data_path, "result_roc_auc_100000.csv"), row.names = 1, stringsAsFactors = F)
+roc_auc0 <- read.csv(paste0(data_path, "result_roc_auc_100000_0.csv"), row.names = 1, stringsAsFactors = F)
+roc_auc <- rbind(roc_auc0, roc_auc)
+roc_auc$agg_level[roc_auc$agg_level == "99"] <- "99."
+
+recall <- read.csv(paste0(data_path, "result_recall_100000.csv"), row.names = 1, stringsAsFactors = F)
+recall0 <- read.csv(paste0(data_path, "result_recall_100000_0.csv"), row.names = 1, stringsAsFactors = F)
+recall <- rbind(recall0, recall)
+recall$agg_level[recall$agg_level == "99"] <- "99."
+
+# load baseline data
+
+
+cor_canc <- c("brain",  "liver", "ovary", "prostate", "pancreatic")
+roc_auc <- roc_auc[roc_auc$cancer_type %in% cor_canc, ]
+recall <- recall[recall$cancer_type %in% cor_canc, ]
+fs <- fs[fs$cancer_type %in% cor_canc, ]
+```
+
+Determine number of successfull iterations
+
+```{r}
+# join baseline: feature_selection_iter=0
+fs <- fs %>%
+  arrange(cancer_type, agg_level, win_len, feature_selection_iter) %>%
+  group_by(cancer_type, agg_level, win_len) %>%
+  mutate(
+    lag_mean_lift_recall_003 = lag(mean_lift_recall_003),
+    diff_mean_lift_recall_003 = mean_lift_recall_003 - lag_mean_lift_recall_003,
+    ratio_up_mean_lift_recall_003 = diff_mean_lift_recall_003 / lag_mean_lift_recall_003,
+    lag_mean_roc = lag(mean_te_auc),
+    diff_mean_roc = mean_te_auc - lag_mean_roc
+    ) %>%
+  mutate(
+    diff_up_greater_3 = ifelse(diff_mean_lift_recall_003 >= 0.1, 1, 0)
+  )
+
+fs_last_iter <- fs %>%
+  filter(diff_up_greater_3 == 0) %>%
+  group_by(cancer_type, agg_level, win_len) %>%
+  filter(row_number() == 1) %>%
+  mutate(last_feature_selection_iter = feature_selection_iter) %>%
+  select(cancer_type, agg_level, win_len, last_feature_selection_iter)
+
+fs <- fs %>%
+  left_join(
+    fs_last_iter, by=c("cancer_type", 'agg_level', "win_len")
+  ) %>%
+  mutate(
+    last_feature_selection_iter = ifelse(is.na(last_feature_selection_iter), 5, last_feature_selection_iter)
+  ) %>%
+  filter(feature_selection_iter <= last_feature_selection_iter)
+  
+```
+
+Select best iterations
+
+```{r}
+roc_auc_best <- fs %>%
+  select("cancer_type","agg_level", "win_len", "feat_added", "feature_selection_iter") %>%
+  inner_join(
+    roc_auc, by=c("cancer_type","agg_level", "win_len", "feat_added", "feature_selection_iter"))
+
+recall_best <- fs %>%
+  select("cancer_type","agg_level", "win_len", "feat_added", "feature_selection_iter") %>%
+  inner_join(
+    recall, by=c("cancer_type","agg_level", "win_len", "feat_added", "feature_selection_iter"))
+```
+
+Summary stats for checking
+
+```{r}
+roc_auc_best_summary <- roc_auc_best %>%
+  group_by(cancer_type,agg_level, win_len, feat_added, feature_selection_iter) %>%
+  summarize(
+    mean_test_auc = mean(te_auc),
+    mean_train_auc = mean(tr_auc)
+  )
+
+map_df <- data.frame(agg_level=c("99.", "99.5.", "99.9."), agg_level_num = c(0.01, 0.005, 0.001))
+recall_best <- recall_best %>%
+  inner_join(map_df)
+recall_best$lift_precision <- recall_best$precision / recall_best$agg_level_num
+recall_best_summary <- recall_best %>%
+  mutate() %>%
+  group_by(cancer_type,agg_level, win_len, feat_added, feature_selection_iter, quantile) %>%
+  summarize(
+    mean_lift_recall = mean(lift_recall),
+    mean_lift_precision = mean(lift_precision)
+  )  
+```
+
+Distribution of number of successful iterations
+```{r}
+max_iter <- fs %>%
+  group_by(cancer_type, agg_level, win_len) %>%
+  filter(feature_selection_iter == max(feature_selection_iter))
+
+
+ggplot(max_iter,
+       aes(x=reorder(cancer_type, feature_selection_iter, FUN=mean), 
+           y=feature_selection_iter,fill=agg_level)) +
+  geom_bar(stat="identity",color="black", position="dodge")+ 
+  theme_light()
+
+```
+
+
+
+```{r}
+df_onegroup <- read.xlsx('../reports/summary14.xlsx')
+
+df_onegroup <- df_onegroup %>%
+  inner_join(
+    proper_feature_group_names,
+    by=c("Feature.group" = "feature_group_name")
+  )
+df_onegroup_copy <- df_onegroup
+```
+
+
+
+```{r}
+best_feature_groups <- data.frame(
+
+  cancer_type=c("blood", "bone", "brain", 'breast', "liver", "ovary", "prostate", "pancreatic", "skin", "uterus"),
+  feature_group=c("histones", "sec_str", "sec_str", "tf", "tf", "tf", "tf", "reg", "tf", "chromatin"),
+  feature_selection_iter=0
+)
+best_feature_groups <- best_feature_groups %>%
+  left_join(
+    df_onegroup %>% 
+      select(Cancer.type, Labeling.type, Feature.group, Mean.lift.of.recall,
+             Mean.test.ROC.AUC), 
+    by=c('cancer_type'='Cancer.type', 'feature_group'='Feature.group')
+  )
+best_feature_groups <- best_feature_groups %>%
+  mutate(
+    win_len=100000
+  ) %>%
+  select(cancer_type, Labeling.type, win_len, feature_group, Mean.lift.of.recall,
+             Mean.test.ROC.AUC, feature_selection_iter) %>%
+  setNames(c("cancer_type","agg_level", "win_len", "feat_added", "mean_lift_recall_003", "mean_te_auc",
+             "feature_selection_iter"))
+best_feature_groups
+```
+
+```{r}
+all_fs <- rbind.data.frame(
+  fs %>%
+  select(names(best_feature_groups)),
+  best_feature_groups
+)
+all_fs <- all_fs %>%
+  arrange(cancer_type, agg_level, win_len, feature_selection_iter) %>%
+  group_by(cancer_type, agg_level, win_len) %>%
+  mutate(
+    lag_mean_lift_recall_003 = lag(mean_lift_recall_003),
+    diff_mean_lift_recall_003 = mean_lift_recall_003 - lag_mean_lift_recall_003,
+    lag_mean_roc = lag(mean_te_auc),
+    diff_mean_roc = mean_te_auc - lag_mean_roc
+    )
+
+```
+
+Uplift for successfull iterations in terms of lift of recall and ROC AUC by cancer type
+```{r}
+ggplot(all_fs %>% filter(feature_selection_iter > 0),
+       aes(x=feature_selection_iter, y=diff_mean_lift_recall_003, colour=cancer_type)) +
+  geom_line()+ 
+  geom_point()+ 
+  facet_wrap(~agg_level, nrow=3, scales="free")+
+  theme_light()+
+  scale_color_jco()
+```
+
+
+```{r}
+ggplot(all_fs %>% filter(feature_selection_iter > 0),
+       aes(x=feature_selection_iter, y=diff_mean_roc, colour=cancer_type)) +
+  geom_line()+ 
+  geom_point()+ 
+  facet_wrap(~agg_level, nrow=3)+
+  theme_light()+
+  scale_color_jco()
+```
+
+```{r}
+roc_auc_ <- max_iter %>%
+  select(cancer_type, agg_level, win_len, feature_selection_iter, feat_added) %>%
+  inner_join(
+    roc_auc_best
+  ) %>%
+  mutate(
+    train_test_diff = tr_auc - te_auc
+  ) %>%
+  group_by(cancer_type, agg_level) %>%
+  summarize(
+    min_test_auc = min(te_auc),
+    sd_test_auc = sd(te_auc),
+    median_test_auc = median(te_auc),
+    mean_test_auc = mean(te_auc),
+    train_test_diff = mean(train_test_diff),
+    n_ex = n()
+  ) %>%
+  mutate(
+    ci_lower_roc_auc = mean_test_auc - 1.96 * sd_test_auc / sqrt(n_ex),
+    ci_upper_roc_auc = mean_test_auc + 1.96 * sd_test_auc / sqrt(n_ex), 
+  ) %>%
+  select(-n_ex)
+
+recall_stats <- max_iter %>%
+  select(cancer_type, agg_level, win_len, feature_selection_iter, feat_added) %>%
+  inner_join(
+    recall_best
+  ) %>%
+  group_by(cancer_type, agg_level, quantile) %>%
+  summarize(
+    mean_recall = mean(recall),
+    mean_lift_recall = mean(lift_recall),
+    mean_precision = mean(precision),
+    mean_lift_precision = mean(lift_precision),
+    sd_recall = sd(recall),
+    sd_lift_recall = sd(lift_recall),
+    sd_precision = sd(precision),
+    sd_lift_precision = sd(lift_precision),
+    n_ex = n()
+  ) %>%
+  mutate(
+    ci_lower_recall = mean_recall - 1.96 * sd_recall / sqrt(n_ex),
+    ci_upper_recall = mean_recall + 1.96 * sd_recall / sqrt(n_ex),
+    
+    ci_lower_lift_recall = mean_lift_recall - 1.96 * sd_lift_recall / sqrt(n_ex),
+    ci_upper_lift_recall = mean_lift_recall + 1.96 * sd_lift_recall / sqrt(n_ex),    
+    
+    ci_lower_precision = mean_precision - 1.96 * sd_precision / sqrt(n_ex),
+    ci_upper_precision = mean_precision + 1.96 * sd_precision / sqrt(n_ex),       
+    
+    ci_lower_lift_precision = mean_lift_precision - 1.96 * sd_lift_precision / sqrt(n_ex),
+    ci_upper_lift_precision = mean_lift_precision + 1.96 * sd_lift_precision / sqrt(n_ex)
+  )
+```
+
+Final comparison - BFS, One feature group and One feature group + Stepwise addition
+Final conclusion: which types of cancer gained additional quality (rank by uplift cancer type/agg level)
+Пересечение доверительных интервалов для новой модели и модели на 1 группе признаков
+
+
+```{r}
+onegr <- df_onegroup %>%
+  inner_join(
+    best_feature_groups %>% select(cancer_type, feat_added) %>% unique() %>% as.data.frame(),
+    by=c("Cancer.type"="cancer_type", "Feature.group"="feat_added")
+  ) %>%
+  select("Cancer.type", "Labeling.type", "Lower.bound.of.confidence.interval.for.mean.lift.of.recall",
+         "Mean.lift.of.recall", "Upper.bound.of.confidence.interval.for.mean.lift.of.recall",
+         "Lower.bound.of.confidence.interval.for.mean.test.ROC.AUC","Mean.test.ROC.AUC",
+         "Upper.bound.of.confidence.interval.for.mean.test.ROC.AUC"
+         ) %>%
+  setNames(c("cancer_type", "agg_level","ci_lower_lift_recall", "mean_lift_recall", "ci_upper_lift_recall",
+             "ci_lower_roc_auc","mean_test_auc", "ci_upper_roc_auc"
+             )) %>%
+  mutate(
+    model_type = "best_group"
+  )
+```
+
+
+
+Mean lift of recall (0.03)
+```{r fig.height=7}
+recall_stats$model_type <- "stepwise_addition"
+recall_stats_a <- recall_stats %>% filter(quantile == 0.03) %>% 
+  select(c("cancer_type", "agg_level", "model_type","ci_lower_lift_recall", "mean_lift_recall", "ci_upper_lift_recall"))
+all_d <- rbind.data.frame(
+  recall_stats_a, 
+  onegr %>% select(c("cancer_type", "agg_level", "model_type","ci_lower_lift_recall", "mean_lift_recall", "ci_upper_lift_recall")))
+
+ggplot(all_d , aes(
+  x=agg_level, y=mean_lift_recall, fill=model_type, ymin=ci_lower_lift_recall,
+  ymax=ci_upper_lift_recall)
+  ) + 
+  geom_bar(position="dodge", color="black", stat="identity")+
+  # geom_errorbar()+
+  facet_wrap(~cancer_type, ncol=2, scales="free")+
+  theme_light()
+```
+
+Mean test ROC AUC
+
+```{r}
+roc_auc_$model_type <- "stepwise_addition"
+ggplot(roc_auc_ , aes(
+  x=agg_level, y=mean_test_auc, fill=model_type, ymin=ci_lower_roc_auc,
+  ymax=ci_upper_roc_auc)
+  ) + 
+  geom_bar(position="dodge", color="black", stat="identity")+
+  geom_errorbar(width=0.2)+
+  facet_wrap(~cancer_type, ncol=2, scales="free")+
+  theme_light()
+
+```
+
+Какие признаки добавились для каждого типа рака (из каких групп)
+
+```{r fig.height=10, fig.width=9}
+feature_cols <- unique(roc_auc$feat_added)
+df_f <- get_feature_df(feature_cols)
+df_f <- df_f %>% 
+  inner_join(
+    proper_feature_group_names,
+    by=c("feature_group" = "feature_group_name")
+  )
+
+feat_added_stats <- fs %>%
+  inner_join(
+    df_f, 
+    by=c("feat_added" = "feature")
+    ) %>%
+  group_by(cancer_type, agg_level, feature_group_name_proper) %>%
+  summarize(
+    n_features_added = n()
+  ) %>%
+  mutate(
+    group = 1
+  ) %>%
+  group_by(cancer_type, agg_level) %>%
+  mutate(rank_feature_group = dense_rank(feature_group_name_proper))
+
+groups <- data.frame(rank_feature_group = seq(1, 7), fake_col = 1)
+old_f <- best_feature_groups %>%
+  inner_join(df_f, by=c("feat_added"="feature_group")) %>%
+  select(cancer_type, agg_level, feature_group_name_proper) %>%
+  mutate(
+    n_features_added = NA,
+    group = 0,
+    fake_col = 1
+  ) %>%
+  unique() %>%
+  full_join(groups) %>%
+  select(-fake_col)
+
+feat_add <- rbind.data.frame(
+  feat_added_stats,
+  old_f
+) 
+feat_add$final_feat_group <- paste0(feat_add$agg_level, feat_add$rank_feature_group, sep="_")
+feat_add <- feat_add %>%
+  arrange(group, final_feat_group)
+
+ggplot(feat_add, 
+       aes(x=as.character(group), y=feature_group_name_proper, color=agg_level, group=final_feat_group), show.legend=F) + 
+  geom_point() + 
+  geom_path(arrow = arrow(ends="last", angle=20, length=unit(0.1, "inches"), type="closed")) +
+  facet_grid(cancer_type~agg_level) + 
+  coord_flip()+
+  theme_light()+
+  geom_text(aes(label=n_features_added), nudge_x=0.2, nudge_y=-0.15)+
+  scale_color_jco()
+```
+
+
+Save results
+
+```{r}
+roc <- roc_auc_ %>%
+  select("cancer_type", "agg_level", "min_test_auc", "sd_test_auc", "median_test_auc", "mean_test_auc",
+         "train_test_diff", "ci_lower_roc_auc", "ci_upper_roc_auc") %>%
+  setNames(c("Cancer type",	"Labeling type", "Min test ROC AUC",	"SD test ROC AUC",	"Median test ROC AUC",	
+             "Mean test ROC AUC", "Train-test difference ROC AUC", "Lower bound of confidence interval for mean test ROC AUC",	
+             "Upper bound of confidence interval for mean test ROC AUC"))
+
+rec_3 <- recall_stats[recall_stats$quantile == 0.03, ] %>%
+  select(c("cancer_type", "agg_level","mean_recall", "mean_lift_recall", "ci_lower_lift_recall",
+           "ci_upper_lift_recall",  "mean_precision","mean_lift_precision", "ci_lower_lift_precision", 
+           "ci_upper_lift_precision")) %>%
+  setNames(c("Cancer type",		"Labeling type", "Mean recall",	"Mean lift of recall",
+  "Lower bound of confidence interval for mean lift of recall",	"Upper bound of confidence interval for mean  lift of recall",
+  "Mean precision",	"Mean lift of precision",	"Lower bound of confidence interval for mean lift of precision",
+  "Upper bound of confidence interval for mean  lift of precision"))
+
+rec_5 <- recall_stats[recall_stats$quantile == 0.05, ] %>%
+  select(c("cancer_type", "agg_level","mean_recall", "mean_lift_recall", "ci_lower_lift_recall",
+           "ci_upper_lift_recall",  "mean_precision","mean_lift_precision", "ci_lower_lift_precision", 
+           "ci_upper_lift_precision")) %>%
+  setNames(c("Cancer type",		"Labeling type", "Mean recall",	"Mean lift of recall",
+  "Lower bound of confidence interval for mean lift of recall",	"Upper bound of confidence interval for mean  lift of recall",
+  "Mean precision",	"Mean lift of precision",	"Lower bound of confidence interval for mean lift of precision",
+  "Upper bound of confidence interval for mean  lift of precision"))
+
+q3 <- roc %>%
+  inner_join(
+    rec_3, by=c("Cancer type","Labeling type")
+  )
+q5 <- roc %>%
+  inner_join(
+    rec_5, by=c("Cancer type", "Labeling type")
+  )
+
+# save
+
+# wb <- createWorkbook()
+# addWorksheet(wb, "q3")
+# addWorksheet(wb, "q5")
+# 
+# writeData(wb, sheet="q3", q3)
+# writeData(wb, sheet="q5", q5)
+
+# saveWorkbook(wb, "../paper_materials/table15.xlsx", overwrite = T)
+
+```
+
+```{r}
+
+# add base feature group column!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+fs_save <- fs %>%
+  ungroup() %>%
+  inner_join(
+    df_f, by=c("feat_added"="feature")
+  ) %>%
+  select(cancer_type, agg_level, feature_selection_iter, feat_added, feature_group_name_proper,  
+         mean_lift_recall_003, mean_te_auc, mean_tr_auc) %>%
+  setNames(c("Cancer type",	"Labeling type", "Feature selection iteration", "Feature added", 
+             "Feature added group",  "Mean lift of recall (0.03)", "Mean test ROC AUC",
+             "Mean train ROC AUC"))
+
+# save
+
+# wb <- createWorkbook()
+# addWorksheet(wb, "selected_features")
+# writeData(wb, sheet="selected_features", fs_save)
+# saveWorkbook(wb, "../paper_materials/table16.xlsx", overwrite = T)
+```
+

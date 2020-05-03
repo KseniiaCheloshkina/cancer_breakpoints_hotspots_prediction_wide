@@ -13,7 +13,7 @@ library(wesanderson)
 library(ggsci)
 
 library(formattable)
-
+source("../run/tools.R")
 all_results <- read.csv(file = "../data/output/feature_engineering.csv")
 all_results$diff_auc <- all_results$tr_auc - all_results$te_auc
 ```
@@ -34,23 +34,18 @@ all_results_reshaped_plot <- melt(
   measure.vars = c( "base_with_binary_flags_diff" ,
                     "base_with_higher_level_feats_diff", "base_with_maximums_diff"))
 
-all_results_reshaped_plot$variable1[all_results_reshaped_plot$variable == "base_with_higher_level_feats_diff"] <- "base and aggregates"
-all_results_reshaped_plot$variable1[all_results_reshaped_plot$variable == "base_with_maximums_diff"] <- "base and maximums"     
-all_results_reshaped_plot$variable1[all_results_reshaped_plot$variable == "base_with_binary_flags_diff"] <- "base and binary flags"     
+all_results_reshaped_plot$variable1[all_results_reshaped_plot$variable == "base_with_higher_level_feats_diff"] <- "local and distant"
+all_results_reshaped_plot$variable1[all_results_reshaped_plot$variable == "base_with_maximums_diff"] <- "local and maximums"     
+all_results_reshaped_plot$variable1[all_results_reshaped_plot$variable == "base_with_binary_flags_diff"] <- "local and binary"     
+
 g1 <- ggplot(all_results_reshaped_plot, aes(value, fill=variable1)) +
-  geom_density(alpha = 0.5) +
+  geom_density(alpha = 0.6) +
   facet_wrap(~cancer_type, nrow = 2)+
   geom_vline(xintercept = 0) + 
-  scale_fill_jco() + 
   xlab("Difference in test ROC AUC") + 
   ylab("Density") +
-  theme(
-      text = element_text(size = 8, family = "arial"),
-      axis.title.x = element_text(size = 10),
-      axis.title.y = element_text(size = 10),
-      legend.position="bottom", legend.title = element_text(size = 10),
-    ) + 
-  labs(fill = "Feature set")
+  labs(fill = "Feature set")+
+  theme_light_custom()
 g1
 ```
 
@@ -119,22 +114,16 @@ for (col in c( "binary_flags" , "binary_with_maximums")){
 all_results_reshaped_plot <- melt(data = all_results_reshaped, id.vars = c("cancer_type", "iter"), 
                                   measure.vars = c( "binary_with_maximums_diff", "binary_flags_diff"))
 
-all_results_reshaped_plot$variable1[all_results_reshaped_plot$variable == "binary_with_maximums_diff"] <- "maximums"
-all_results_reshaped_plot$variable1[all_results_reshaped_plot$variable == "binary_flags_diff"] <- "binary flags"
+all_results_reshaped_plot$variable1[all_results_reshaped_plot$variable == "binary_with_maximums_diff"] <- "binary and maximums"
+all_results_reshaped_plot$variable1[all_results_reshaped_plot$variable == "binary_flags_diff"] <- "binary"
 g2 <- ggplot(all_results_reshaped_plot, aes(value, fill=variable1)) +
-  geom_density(alpha = 0.5) +
+  geom_density(alpha = 0.6) +
   facet_wrap(~cancer_type, nrow = 2)+
   geom_vline(xintercept = 0) + 
-  scale_fill_jco() + 
   xlab("Difference in test ROC AUC") + 
   ylab("Density") +
-  theme(
-      text = element_text(size = 8, family = "arial"),
-      axis.title.x = element_text(size = 10),
-      axis.title.y = element_text(size = 10),
-      legend.position="bottom", legend.title = element_text(size = 10),
-    ) + 
-  labs(fill = "Feature set")
+  labs(fill = "Feature set")+
+  theme_light_custom()
 g2
 ```
 
@@ -174,7 +163,6 @@ g_f <- ggarrange(g1, g2,
           font.label = list(size = 10, color = "black", face ="bold")
           )
 g_f
-# ggsave(filename = "Fig1.tiff", plot = g_f, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 5, height = 3, scale = 2, compression = "lzw")
+# ggsave(filename = "Fig1.tiff", plot = g_f, device = "tiff", path = "../paper_materials/section 2/", dpi = 600, units = "in", width = 5, height = 3, scale = 2, compression = "lzw")
 
 ```
-

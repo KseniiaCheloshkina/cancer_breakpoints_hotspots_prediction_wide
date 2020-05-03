@@ -207,7 +207,35 @@ melted_cormat <- melted_cormat[-pancr_ind,]
 pancr_ind <- grep(melted_cormat$Var2, pattern = "pancreas")
 melted_cormat <- melted_cormat[-pancr_ind,]
 
-g1 <- ggplot(melted_cormat, aes(Var2, Var1, fill = value))+
+source("../run/features.R")
+df_f <- get_feature_df(unique(melted_cormat$Var1))
+
+melted_cormat <- melted_cormat %>%
+  inner_join(df_f, by=c("Var1"="feature")) %>%
+  rename(var1_feature_group = feature_group) %>%
+  inner_join(df_f, by=c("Var2"="feature")) %>%
+  rename(var2_feature_group = feature_group)
+a <- gsub(melted_cormat[melted_cormat$var1_feature_group == "tf", 'Var1'], pattern = "cancer_liver_", replacement = "")
+a <- gsub(a, pattern = ".human", replacement = "")
+melted_cormat[melted_cormat$var1_feature_group == "tf", 'Var1'] <- a
+a <- gsub(melted_cormat[melted_cormat$var2_feature_group == "tf", 'Var2'], pattern = "cancer_liver_", replacement = "")
+a <- gsub(a, pattern = ".human", replacement = "")
+melted_cormat[melted_cormat$var2_feature_group == "tf", 'Var2'] <- a
+
+rn <- melted_cormat %>%
+  arrange(var1_feature_group, Var1) %>%
+  select(var1_feature_group, Var1) %>%
+  unique() %>%
+  mutate(r = row_number()) %>%
+  select(-var1_feature_group)
+
+melted_cormat <- melted_cormat %>%
+  inner_join(rn,by=c("Var1"="Var1")) %>%
+  rename(var1_r = r)%>%
+  inner_join(rn,by=c("Var2"="Var1")) %>%
+  rename(var2_r = r)
+
+g1 <- ggplot(melted_cormat, aes(reorder(Var2, var2_r), reorder(Var1, -var1_r), fill = value))+
   geom_tile() +
   xlab("Feature") + 
   ylab("Feature") +
@@ -220,10 +248,10 @@ g1 <- ggplot(melted_cormat, aes(Var2, Var1, fill = value))+
     axis.text.y = element_text(hjust = 1)
     ) + 
   labs(fill = "Spearman \ncorrelation")+
-  scale_fill_gradientn(colours = pal) + 
-  coord_fixed()
+  scale_fill_gradientn(colours = pal) 
 
-# ggsave(filename = "Fig1.tiff", plot = g1, device = "tiff", path = "../paper_materials/supplementary figures/",
+g1
+# ggsave(filename = "Fig01.tiff", plot = g1, device = "tiff", path = "../paper_materials/supplementary figures/",
 #        dpi = 600, units = "in", width = 6, height = 5, scale = 2, compression = "lzw")
 
 ```

@@ -251,7 +251,8 @@ rf_fit <- function(x_train, y_train, trCtrl, n_pos, n_neg, mtryGrid){
 ######### to rename feature groups for publication plots
 proper_feature_group_names <- data.frame(
   feature_group_name = c("chromatin","histones","methyl", "tf", "reg", "sec_str", "tad"),
-  feature_group_name_proper = c("DNase", "HM", "methyl", "TF", "region", "non-B DNA", "TAD")
+  feature_group_name_proper = c("DNase", "HM", "methyl", "TF", "region", "non-B DNA", "TAD"),
+  colors = c("#0073C2","#EFC000", "#868686","#8F7700","#7AA6DC", "#A73030", "#003C67")
 )
 
 ######### publication plots theme

@@ -11,15 +11,16 @@ output:
 library(ggplot2)
 library(ggsci)
 library(wesanderson)
-library(ggpubr)
+library("ggdendro")
 
 library(dplyr)
 library(reshape2)
 
 library(formattable)
+library(webshot)
 
 library(openxlsx)
-source("../run/tools.R")
+
 win_len <- 100000
 
 data_path <- "../data/output/classifier_results/"
@@ -50,16 +51,18 @@ roc_auc_cancer_stats <- all_features_data %>%
 roc_auc_cancer_stats %>% 
   arrange(min_test_auc)
 ```
-Distribution of test ROC AUC for all cancer types by hotspots labeling
+
+
 ```{r fig.width=10}
-g1 <- ggplot(all_features_data, aes(y=te_auc, fill=agg_level)) +
-  geom_boxplot()+
+g1 <- ggplot(all_features_data, aes(te_auc, fill=agg_level)) +
+  geom_density(alpha=0.6)+
   facet_wrap(~ cancer_type, nrow = 2) +
-  scale_fill_jco() + 
-  xlab("")+
-  ylab("Test ROC AUC")+
-  labs(fill = "Labeling type")+
-  theme_light_custom()
+  scale_fill_npg() + 
+  labs(fill='Labeling type')+
+  xlab('Test ROC AUC')
+
+# ggsave(filename = "fig1.tiff", plot = g1, device = "tiff", path = "../isbra/",
+#        dpi = 400, units = "in", width = 6, height = 3.5, scale = 1.5, compression = "lzw")
 g1
 ```
 
@@ -67,11 +70,15 @@ Difference between train and test
 
 ```{r fig.width=10}
 all_features_data$diff_auc <- all_features_data$tr_auc - all_features_data$te_auc
-ggplot(all_features_data, aes(diff_auc, fill=agg_level)) +
+g2 <- ggplot(all_features_data, aes(diff_auc, fill=agg_level)) +
   geom_density(alpha=0.5)+
   facet_wrap(~ cancer_type, nrow = 2) +
-  ggtitle("Distribution of difference of train and test ROC AUC for all cancer types by hotspots labeling") + 
-  scale_fill_jco()
+  scale_fill_npg()+
+  labs(fill='Labeling type')+
+  xlab('Difference between train and test ROC AUC')
+# ggsave(filename = "fig2.tiff", plot = g2, device = "tiff", path = "../isbra/",
+#        dpi = 400, units = "in", width = 6, height = 3.5, scale = 1.5, compression = "lzw")
+g2
   
 ```
 
@@ -115,16 +122,37 @@ by_hspt_med <- by_hspt %>%
   select(cancer_type, agg_level, min_test_auc, test_auc, train_test_diff) %>%
   dcast(formula = cancer_type ~ agg_level, value.var = "test_auc")
 names(by_hspt_med)[2:ncol(by_hspt_med)] <- paste0("median_test_", names(by_hspt_med)[2:ncol(by_hspt_med)])
-
+by_hspt_med <- by_hspt_med %>%
+  mutate(
+    median_test_99. = round(median_test_99., 3),
+    median_test_99.5. = round(median_test_99.5., 3),
+    median_test_99.9. = round(median_test_99.9., 3)
+    )
 formattable(by_hspt_med, align =c("l","c","c","c"), list(
-  `cancer_type` = formatter("span", style = ~ style(color = "grey", font.weight = "bold")), 
-  `median_test_99.`= color_tile('#1E90FF', 'yellow'),
-  `median_test_99.5.`= color_tile('#1E90FF', 'yellow'),
-  `median_test_99.9.`= color_tile('#1E90FF', 'yellow')
+  `cancer_type` = formatter("span", style = ~ style(color = "grey", width = "200px", font.weight = "bold")), 
+  `median_test_99.`= color_tile('#4DBBD5F9', '#E64B3599'),
+  `median_test_99.5.`= color_tile('#4DBBD5F9', '#E64B3599'),
+  `median_test_99.9.`= color_tile('#4DBBD5F9','#E64B3599')
 ))
 
 ```
 
+```{r}
+by_hspt_med_m <- melt(by_hspt_med, id.vars = 'cancer_type')
+by_hspt_med_m$variable <- gsub(x=by_hspt_med_m$variable, pattern = "median_test_", replacement = "")
+g3 <- ggplot(by_hspt_med_m, aes(x=variable, y=value, fill=variable)) + 
+  geom_bar(stat='identity') + 
+  facet_wrap(~ cancer_type, nrow=2) + 
+  scale_fill_npg() +
+  xlab("Labeling type")+
+  ylab('Median test ROC AUC')+
+  labs(fill='Labeling type')
+
+
+# ggsave(filename = "fig3.tiff", plot = g3, device = "tiff", path = "../isbra/",
+#        dpi = 400, units = "in", width = 6, height = 3.5, scale = 1.5, compression = "lzw")
+g3
+```
 
 Difference between train and test ROC AUC for each cancer type and labeling.
 
@@ -145,10 +173,19 @@ formattable(by_hspt_diff, align =c("l","c","c","c"), list(
 ```
 
 ```{r fig.width=10}
-ggplot(by_hspt, aes(x=test_auc, y=train_test_diff, color=agg_level, size=sd_test_auc)) + 
+g4 <- ggplot(by_hspt, aes(x=test_auc, y=train_test_diff, color=agg_level, size=sd_test_auc)) + 
   geom_point() + 
   geom_text(aes(label=cancer_type), size=3, vjust=0, hjust=1.5) + 
-  scale_color_jco()
+  scale_fill_npg() + 
+  scale_color_npg() + 
+  xlab("Median test ROC AUC") + 
+  ylab("Difference between train and test ROC AUC")+
+  scale_size(guide=F)+
+  labs(colour='Labeling type')
+
+# ggsave(filename = "fig4.tiff", plot = g4, device = "tiff", path = "../isbra/", 
+#        dpi = 400, units = "in", width = 6, height = 3.5, scale = 2, compression = "lzw")
+g4
 ```
 
 Чем более редкие хотспоты хотим обнаружить, тем больше разброс метрики на тесте (мало позитивных примеров и в зависимости от выборки получаем разные результаты), так же, как и разница между обучением и тестом. При этом для всех типов рака кроме breast разница между обучением и тестом на самом высоком уровне (99,9) в 2-3 раза выше, чем при более низких уровнях и составляет около 20п. 
@@ -344,7 +381,7 @@ comp_df <- best_labeling %>%
 comp_df %>%
   select(cancer_type, breakpoints_min_test_auc, hotspot_min_test_auc, breakpoints_test_auc, hotspot_test_auc) 
 ```
-Distribution of test ROC AUC for best labeling hotspot profile and all breakpoints prediction
+
 ```{r fig.width=10, fig.asp=0.5}
 
 best_hsp_bkpt <- all_features_data %>%
@@ -358,25 +395,16 @@ best_hsp_bkpt <- all_features_data %>%
       mutate(type="breakpoints") 
   )
 
-# ggplot(best_hsp_bkpt, aes(x=cancer_type, y=te_auc, fill=type)) + 
-#   geom_boxplot() + 
-#   ggtitle('Distribution of test ROC AUC for best labeling hotspot profile
-#           and all breakpoints prediction') + 
-#   scale_fill_jco()
+g9 <- ggplot(best_hsp_bkpt, aes(x=cancer_type, y=te_auc, fill=type)) + 
+  geom_boxplot() + 
+  scale_fill_npg() + 
+  ylab("Test ROC AUC") + 
+  xlab("Cancer type") + 
+  labs(fill='Model type')
 
-g2 <- ggplot(best_hsp_bkpt, aes(te_auc, fill=type)) + 
-  geom_density(alpha=0.6) +
-  facet_wrap(~cancer_type, nrow = 2, scales = "free")+
-  scale_fill_jco()+
-  xlab("Test ROC AUC")+
-  ylab("Density") + 
-  theme_light_custom()+
-  labs(fill = "Model type")
-
-# ggsave(filename = "FigS2.tiff", plot = g2, device = "tiff", path = "../paper_materials/supplemental/",
-#        dpi = 600, units = "in", width = 5, height = 3, scale = 2, compression = "lzw")
-
-g2
+# ggsave(filename = "fig9.tiff", plot = g9, device = "tiff", path = "../isbra/", 
+#        dpi = 400, units = "in", width = 6, height = 3.5, scale = 1.5, compression = "lzw")
+g9
 ```
 
 
@@ -390,10 +418,46 @@ comp_med <- best_hsp_bkpt %>%
 
 formattable(comp_med, align =c("l", "c", "c","c"), list(
   `cancer_type` = formatter("span", style = ~ style(color = "grey", font.weight = "bold")), 
-  `hotspot`= color_tile('#1E90FF', 'yellow'),
-  `breakpoints`= color_tile('#1E90FF', 'yellow'),
-  `ratio`= color_tile('#1E90FF', 'yellow')
+  `hotspot`= color_tile('#4DBBD5F9','#E64B3599'),
+  `breakpoints`= color_tile('#4DBBD5F9','#E64B3599'),
+  `ratio`= color_tile('#4DBBD5F9','#E64B3599')
 ))
+```
+
+```{r}
+comp_med_m <- melt(comp_med, id.vars = 'cancer_type')
+g11 <- ggplot(comp_med_m %>% 
+               filter(variable != 'ratio'), 
+             aes(x=cancer_type, y=value, fill=variable)) + 
+  geom_bar(stat='identity', position='dodge') + 
+  scale_fill_npg() +
+  xlab("Cancer type")+
+  ylab('Median test ROC AUC')+
+  labs(fill='Model type')
+
+# ggsave(filename = "fig11.tiff", plot = g11, device = "tiff", path = "../isbra/",
+#         dpi = 400, units = "in", width = 6, height = 3.5, scale = 1.5, compression = "lzw")
+g11
+```
+
+```{r}
+names(by_hspt_med) <- c("Cancer_type", "Median test ROC AUC (99%)", "Median test ROC AUC (99.5%)", "Median test ROC AUC (99.9%)")
+
+comp_med <- comp_med %>%
+  mutate(
+    breakpoints = round(breakpoints, 3),
+    hotspot = round(hotspot, 3),
+    ratio = round(ratio, 3)
+  )
+names(comp_med) <- c("Cancer_type", "Breakpoints median test ROC AUC", "Hotspots median test ROC AUC", "Ratio of median test ROC AUC for hotspots and breakpoints prediction models")
+wb <- createWorkbook()
+addWorksheet(wb, "Table 1")
+addWorksheet(wb, "Table 2")
+
+writeData(wb, sheet="Table 1", by_hspt_med)
+writeData(wb, sheet="Table 2", comp_med)
+
+# saveWorkbook(wb, "../isbra/tables.xlsx", overwrite = T)
 ```
 
 Итого:
@@ -415,23 +479,37 @@ all_features_data$agg_level <- as.character(all_features_data$agg_level)
 all_features_data$quantile_chr <- as.character(all_features_data$quantile)
 
 q <- unique(all_features_data$quantile_chr)
-ggplot(all_features_data[all_features_data$quantile_chr %in% 
+g5 <- ggplot(all_features_data[all_features_data$quantile_chr %in% 
                            c("0.01", "0.02", "0.05", "0.1", "0.2"), ],
        aes(x=quantile_chr, y=recall, fill=agg_level)) +
   geom_boxplot() +
   facet_wrap(~cancer_type) + 
-  scale_fill_jco()
+  scale_fill_npg() + 
+  labs(fill='Labeling type')+
+  xlab("Probability percentile threshold")+
+  ylab("Recall")
+  
+# ggsave(filename = "fig5.tiff", plot = g5, device = "tiff", path = "../isbra/", 
+#        dpi = 400, units = "in", width = 6, height = 3.5, scale = 1.5, compression = "lzw")
+g5
 ```
 
 Precision
 
 ```{r fig.width=10}
-ggplot(all_features_data[all_features_data$quantile_chr %in% 
+g6 <- ggplot(all_features_data[all_features_data$quantile_chr %in% 
                            c("0.01", "0.02", "0.05", "0.1", "0.2"), ], 
        aes(x=quantile_chr, y=precision, fill=agg_level)) +
   geom_boxplot() +
   facet_wrap(~cancer_type) + 
-  scale_fill_jco()
+  scale_fill_npg() +
+  labs(fill='Labeling type')+
+  xlab("Probability percentile threshold")+
+  ylab("Precision")
+
+# ggsave(filename = "fig6.tiff", plot = g6, device = "tiff", path = "../isbra", 
+#        dpi = 400, units = "in", width = 6, height = 3.5, scale = 1.5, compression = "lzw")
+g6
 ```
 
 Lift of recall
@@ -442,7 +520,10 @@ ggplot(all_features_data[all_features_data$quantile_chr %in%
        aes(x=quantile_chr, y=lift_recall, fill=agg_level)) +
   geom_boxplot() +
   facet_wrap(~cancer_type) + 
-  scale_fill_jco()
+  scale_fill_npg() +
+  labs(fill='Labeling type')+
+  xlab("Probability percentile threshold")+
+  ylab("Lift of recall")
 ```
 
 One panel for different probability quantiles
@@ -493,14 +574,10 @@ comp_rec_pl <- comp_rec %>%
   select('cancer_type', 'agg_level', 'recall', 'precision', 'lift_recall', 'lift_precision') %>%
   melt(id.vars=c("cancer_type","agg_level"))
 
-g3 <- ggplot(comp_rec_pl, aes(x=cancer_type, y=value, fill=agg_level)) + 
+ggplot(comp_rec_pl, aes(x=cancer_type, y=value, fill=agg_level)) + 
   geom_boxplot() + 
   facet_wrap(~variable, scales = "free", nrow = 4) + 
-  scale_fill_jco() + 
-  xlab("Cancer type")+
-  labs(fill = "Labeling type")+
-  theme_light_custom()
-g3
+  scale_fill_jco()
 ```
 
 
@@ -539,21 +616,35 @@ ci_stats <- all_features_data %>%
 Lift of recall
 
 ```{r fig.width=10}
-ggplot(ci_stats %>% filter(quantile <= 0.5), aes(x=quantile, y=mean_lift_recall, colour=agg_level)) + 
-  geom_ribbon(aes(ymin=ci_lower_lift_recall, ymax=ci_upper_lift_recall, fill=agg_level), alpha=0.5) + 
-  facet_wrap(~ cancer_type, nrow = 5,scales = "free") + 
-  scale_fill_jco() + 
-  scale_color_jco()
+g7 <- ggplot(ci_stats %>% filter(quantile <= 0.5), aes(x=quantile, y=mean_lift_recall, colour=agg_level)) + 
+  geom_ribbon(aes(ymin=ci_lower_lift_recall, ymax=ci_upper_lift_recall, fill=agg_level), alpha=0.6) + 
+  facet_wrap(~ cancer_type, nrow = 5,scales = "free") +  
+  scale_fill_npg() + 
+  scale_color_npg()+
+  labs(fill='Labeling type',colour='Labeling type')+
+  xlab("Probability percentile threshold")+
+  ylab("Mean lift of recall")
+
+# ggsave(filename = "fig7.tiff", plot = g7, device = "tiff", path = "../isbra", 
+#        dpi = 400, units = "in", width = 6, height = 3.5, scale = 1.5, compression = "lzw")
+g7
 ```
 
 Lift of precision
 
 ```{r fig.width=10}
-ggplot(ci_stats %>% filter(quantile <= 0.5), aes(x=quantile, y=mean_lift_precision, colour=agg_level)) + 
-  geom_ribbon(aes(ymin=ci_lower_lift_precision, ymax=ci_upper_lift_precision, fill=agg_level), alpha=0.5) + 
+g8 <- ggplot(ci_stats %>% filter(quantile <= 0.5), aes(x=quantile, y=mean_lift_precision, colour=agg_level)) + 
+  geom_ribbon(aes(ymin=ci_lower_lift_precision, ymax=ci_upper_lift_precision, fill=agg_level), alpha=0.6) + 
   facet_wrap(~ cancer_type, nrow = 5,scales = "free") + 
-  scale_fill_jco() + 
-  scale_color_jco()
+  scale_fill_npg() + 
+  scale_color_npg()+
+  labs(fill='Labeling type',colour='Labeling type')+
+  xlab("Probability percentile threshold")+
+  ylab("Mean lift of precision")
+
+# ggsave(filename = "fig8.tiff", plot = g8, device = "tiff", path = "../isbra", 
+#        dpi = 400, units = "in", width = 6, height = 3.5, scale = 1.5, compression = "lzw")
+g8
 ```
 
 
@@ -711,10 +802,17 @@ ci_stats_bkpt <- recall_all_agg %>%
 Lift of recall
 
 ```{r fig.width=10}
-ggplot(ci_stats_bkpt %>% filter(quantile <= 0.1), aes(x=quantile, y=mean_lift_recall, colour=cancer_type)) + 
+g10 <- ggplot(ci_stats_bkpt %>% filter(quantile <= 0.1), aes(x=quantile, y=mean_lift_recall, colour=cancer_type)) + 
   geom_ribbon(aes(ymin=ci_lower_lift_recall, ymax=ci_upper_lift_recall, fill=cancer_type), alpha=0.5) + 
-  scale_fill_jco() + 
-  scale_color_jco()
+  scale_fill_npg() + 
+  scale_color_npg()+
+  labs(fill='Cancer type',colour='Cancer type')+
+  xlab("Probability percentile threshold")+
+  ylab("Mean lift of recall")
+
+# ggsave(filename = "fig10.tiff", plot = g10, device = "tiff", path = "../isbra", 
+#        dpi = 400, units = "in", width = 6, height = 3.5, scale = 1.5, compression = "lzw")
+g10
 ```
 
 Recall 
@@ -734,66 +832,4 @@ ggplot(ci_stats_bkpt %>% filter(quantile <= 0.1), aes(x=quantile, y=mean_recall,
  
 Предположение:
 Группа 3 показывает сравнительно более высокое качество, чем остальные, в то время как в целом качество предсказания разрывов намного хуже качества предсказания хотспотов. Возможно, убывающий характер lift of recall говорит о том, что для этих типов рака некоторая доля разрывов является ярко выраженной, а остальная часть также, как и для других типов рака, не выделяется из общей массы. Поэтому, возможно, большее количество размеченных хотспотов может больше соответствовать данным типам рака.
-
-```{r echo=F}
-# roc auc
-roc_data <- roc_auc_data %>%
-  filter(
-    feat_group == "all"
-  ) %>%
-  mutate(
-    train_test_diff = tr_auc - te_auc
-  ) %>%
-  group_by(cancer_type, agg_level) %>%
-  summarize(
-    min_test_auc = min(te_auc),
-    sd_test_auc = sd(te_auc),
-    median_test_auc = median(te_auc),
-    mean_test_auc = mean(te_auc),
-    train_test_diff = mean(train_test_diff),
-    n_ex = n()
-  ) %>%
-  mutate(
-    ci_lower_roc_auc = mean_test_auc - 1.96 * sd_test_auc / sqrt(n_ex),
-    ci_upper_roc_auc = mean_test_auc + 1.96 * sd_test_auc / sqrt(n_ex), 
-  ) %>%
-  select(-n_ex)
-
-# recall
-recall_stats_hsp <- ci_stats %>% 
-  filter(quantile %in% c(0.001, 0.005, 0.01,0.02,0.03, 0.040, 0.050, 0.100)) %>%
-  select(cancer_type, agg_level, quantile, mean_recall, mean_precision, mean_lift_recall, ci_lower_lift_recall, ci_upper_lift_recall, mean_lift_precision, ci_lower_lift_precision,ci_upper_lift_precision)
-
-recall_stats_bkpt <- ci_stats_bkpt %>% 
-  ungroup() %>%
-  filter(quantile %in% c(0.001, 0.005,0.01,0.02,0.03, 0.040, 0.050, 0.100)) %>%
-  select(cancer_type, quantile, mean_recall, mean_lift_recall, ci_lower_lift_recall, ci_upper_lift_recall,
-         mean_precision)
-
-# save
-# wb <- createWorkbook()
-# addWorksheet(wb, "ROC_AUC_hotspots")
-# addWorksheet(wb, "ROC_AUC_breakpoints")
-# addWorksheet(wb, "Recall_hotspots")
-# addWorksheet(wb, "Recall_breakpoints")
-# 
-# writeData(wb, sheet="ROC_AUC_hotspots", roc_data[roc_data$agg_level != "all", ])
-# writeData(wb, sheet="ROC_AUC_breakpoints", roc_data[roc_data$agg_level == "all", ])
-# 
-# writeData(wb, sheet="Recall_hotspots", recall_stats_hsp)
-# writeData(wb, sheet="Recall_breakpoints", recall_stats_bkpt)
-# 
-# saveWorkbook(wb, "../reports/train_baseline.xlsx", overwrite = T)
-```
-
-
-```{r}
-g_f <- ggarrange(g1, g3,  
-          labels = c("A", "B"),
-          ncol = 1, nrow = 2, heights = c(1, 2),
-          font.label = list(size = 10, color = "black", face ="bold"))
-g_f
-# ggsave(filename = "FigS2.tiff", plot = g_f, device = "tiff", path = "../paper_materials/supplemental/",
-#        dpi = 600, units = "in", width = 6, height = 8, scale = 2, compression = "lzw")
-```
 

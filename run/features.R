@@ -116,7 +116,8 @@ get_maximum_features <- function(data, features_cols){
 }
 
 get_feature_df <- function(features_cols){
-
+  
+  
   # get groups of features
   sec_str <- c("A_Phased_Repeat","Direct_Repeat", "Inverted_Repeat", "Mirror_Repeat","Short_Tandem_Repeat",
                "G_quadruplex", "stemloops_16_50", "stemloops_6_15", "Z_DNA_Motif")
@@ -191,42 +192,72 @@ get_feature_df <- function(features_cols){
       all_tf <- c(all_tf, grep(x = feat, pattern = col, value = TRUE))  
     }
   }
-  feat_group_df <- rbind(
-    data.frame(
-      feature_group=c("tf"),
-      color=c("#8F7700FF"),
-      feature=all_tf
-    ),
-    data.frame(
-      feature_group=c("histones"),
-      color=c("#EFC000FF"),
-      feature=all_histones
-    ),
-    data.frame(
-      feature_group=c("methyl"),
-      color=c("#868686FF"),
-      feature=all_methyl
-    ),
-    data.frame(
-      feature_group=c("chromatin"),
-      color=c("#0073C2FF"),
-      feature=all_chromatin
-    ),
-    data.frame(
-      feature_group=c("tad"),
-      color=c("#003С67FF"),
-      feature=all_tad
-    ),
-    data.frame(
-      feature_group=c("reg"),
-      color=c("#7AA6DCFF"),
-      feature=all_reg
-    ),
-    data.frame(
-      feature_group=c("sec_str"),
-      color=c("#A73030FF"),
-      feature=all_sec_str
+  
+  feat_group_df <- data.frame()
+  if (length(all_tf) > 0){
+    feat_group_df <- rbind(
+      feat_group_df,
+      data.frame(
+        feature_group=c("tf"),
+        feature=all_tf
+      )
     )
-  )
+  }
+  
+  if (length(all_histones) > 0){
+    feat_group_df <- rbind(
+      feat_group_df,
+      data.frame(
+        feature_group=c("histones"),
+        feature=all_histones
+      )
+    )
+  }    
+  if (length(all_methyl) > 0){
+    feat_group_df <- rbind(
+      feat_group_df,
+      data.frame(
+        feature_group=c("methyl"),
+        feature=all_methyl
+      )
+    )
+  } 
+  if (length(all_chromatin) > 0){
+    feat_group_df <- rbind(
+      feat_group_df,
+      data.frame(
+        feature_group=c("chromatin"),
+        feature=all_chromatin
+      )
+    )
+  } 
+  if (length(all_tad) > 0){
+    feat_group_df <- rbind(
+      feat_group_df,
+      data.frame(
+        feature_group=c("tad"),
+        feature=all_tad
+      )
+    )
+  } 
+  if (length(all_reg) > 0){
+    feat_group_df <- rbind(
+      feat_group_df,
+      data.frame(
+        feature_group=c("reg"),
+        feature=all_reg
+      )
+    )
+  } 
+  if (length(all_sec_str) > 0){
+    feat_group_df <- rbind(
+      feat_group_df,
+      data.frame(
+        feature_group=c("sec_str"),
+        feature=all_sec_str
+      )
+    )
+  } 
+
   return(feat_group_df)
 }

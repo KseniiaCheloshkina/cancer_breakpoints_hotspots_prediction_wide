@@ -19,7 +19,7 @@ library(reshape2)
 library(formattable)
 
 library(openxlsx)
-
+source("../run/tools.R")
 
 win_len <- 100000
 data_path <- "../data/output/classifier_results_best_features/"
@@ -318,20 +318,14 @@ ggplot(comp_rec_pl, aes(x=cancer_type, y=value, fill=variable_new)) +
 ```{r}
 comp_rec_pl$variable_type[comp_rec_pl$variable_type == 'recall'] <- 'lift_recall'
 comp_rec_pl$variable_type[comp_rec_pl$variable_type == 'precision'] <- 'lift_precision'
-g1 <- ggplot(comp_rec_pl, aes(x=cancer_type, y=value, fill=variable_new)) + 
+g_boruta <- ggplot(comp_rec_pl, aes(x=cancer_type, y=value, fill=variable_new)) + 
   geom_bar(stat='identity',  color="black", position = "dodge") +
   facet_wrap(~variable_type,nrow = 2) + 
-  scale_fill_jco() + 
-    theme(
-      text = element_text(size = 8, family = "arial"),
-      axis.title.x = element_text(size = 10),
-      axis.title.y = element_text(size = 10),
-      legend.position="bottom", legend.title = element_text(size = 10),
-    ) +
+  theme_light_custom()+
   xlab("Cancer type") + 
   ylab("value") +
   labs(fill = "Feature set")
-g1
+g_boruta
 
 # ggsave(filename = "Fig4.tiff", plot = g1, device = "tiff", path = "../paper_materials/supplementary figures/", dpi = 600, units = "in", width = 5, height = 3, scale = 2, compression = "lzw")
 ```

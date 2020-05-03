@@ -23,9 +23,10 @@ customYellow = 'yellow'
 customBlue = '#1E90FF'
 pal <- wes_palette("Zissou1", 100, type = "continuous")
 
-source('run/tools.R')
+source('../run/tools.R')
+source('../run/features.R')
 
-df <- read.csv("data/output/boruta_res_100000.csv", row.names = 1, stringsAsFactors = F)
+df <- read.csv("../data/output/boruta_res_100000.csv", row.names = 1, stringsAsFactors = F)
 df <- unique(df)
 df %>%
   group_by(agg_level) %>%
@@ -220,51 +221,12 @@ df_hits_last_iter <- df_all_hits %>%
   filter(iter == max(iter))
 
 df_hits_last_iter$feature_n <- gsub(x=df_hits_last_iter$feature, pattern = "upper_", replacement = "")
-sec_str <- c("A_Phased_Repeat","Direct_Repeat", "Inverted_Repeat", "Mirror_Repeat","Short_Tandem_Repeat",
-             "G_quadruplex", "stemloops_16_50", "stemloops_6_15", "Z_DNA_Motif")
-reg <- c("X3UTR", "X5UTR", "codingExons", "downstream", "introns", "promoters", "WholeGenes")
-tad <- c("tad_boundaries_liver", "tad_boundaries_ovary", "tad_boundaries_pancreatic")
-chromatin <-c("cancer_skin_DNase_seq", "cancer_brain_DNase_seq", "cancer_blood_DNase_seq",
-              "cancer_prostate_DNase_seq", "cancer_pancreas_DNase_seq", "cancer_ovary_DNase_seq",
-              "cancer_liver_DNase_seq", "cancer_breast_DNase_seq", "cancer_uterus_DNase_seq",
-              "cancer_bone_DNase_seq")
-methyl <- c("cancer_brain_DNA_methylation", "cancer_breast_DNA_methylation",
-            "cancer_liver_DNA_methylation", "cancer_pancreas_DNA_methylation",
-            "cancer_skin_DNA_methylation", "cancer_uterus_DNA_methylation")
-histones <- c( "cancer_liver_H3K27ac.human", "cancer_uterus_H3K27ac.human", "cancer_blood_H3K27ac.human",
-               "cancer_brain_H3K27ac.human",
-               "cancer_pancreas_H3K27ac.human","cancer_blood_H3K27me3.human","cancer_brain_H3K27me3.human",    
-               "cancer_blood_H3K36me3.human","cancer_pancreas_H3K36me3.human","cancer_brain_H3K36me3.human",    
-               "cancer_pancreas_H3K4me1.human","cancer_blood_H3K4me1.human","cancer_brain_H3K4me1.human",
-               "cancer_breast_H3K4me3.human","cancer_uterus_H3K4me3.human","cancer_liver_H3K4me3.human",
-               "cancer_brain_H3K4me3.human","cancer_blood_H3K4me3.human","cancer_skin_H3K4me3.human",
-               "cancer_pancreas_H3K4me3.human","cancer_brain_H3K9me3.human","cancer_pancreas_H3K9me3.human",
-               "cancer_blood_H3K9me3.human" )
-tf <- c("cancer_liver_ATF3.human", "cancer_liver_CTCF.human", "cancer_pancreas_CTCF.human",
-        "cancer_liver_EGR1.human", "cancer_liver_FOXA1.human", "cancer_liver_FOXA2.human", 
-        "cancer_liver_GABPA.human","cancer_liver_HNF4A.human", "cancer_liver_HNF4G.human",
-        "cancer_liver_JUND.human","cancer_liver_MAX.human", "cancer_liver_NR2F2.human",
-        "cancer_liver_REST.human", "cancer_liver_RXRA.human", "cancer_liver_SP1.human",
-        "cancer_liver_YY1.human", "cancer_liver_ZBTB33.human")
 
-df_hits_last_iter$feature_group <- ifelse(
-  df_hits_last_iter$feature_n %in% sec_str, "sec_str",
-  ifelse(
-    df_hits_last_iter$feature_n %in% reg, "reg",
-    ifelse(
-      df_hits_last_iter$feature_n %in% tad, "tad",
-      ifelse(
-        df_hits_last_iter$feature_n %in% chromatin, "chromatin",
-        ifelse(
-          df_hits_last_iter$feature_n %in% methyl, "methyl",
-          ifelse(
-            df_hits_last_iter$feature_n %in% histones, "histones", "tf"
-        )
-        )
-      )
-    )
-  )
-)
+feature_cols <- unique(df_hits_last_iter$feature)
+df_feat_proper <- get_feature_df(feature_cols)
+
+df_hits_last_iter <- df_hits_last_iter %>%
+  inner_join(df_feat_proper)
 
 df_hits_last_iter_agg <- df_hits_last_iter %>%
   group_by(cancer_type, feature, feature_group) %>%
@@ -283,13 +245,56 @@ ggplot(df_hits_last_iter_agg, aes(x=cancer_type, y=feature,fill=n_best)) +
   scale_fill_gradientn(colours = pal)
 ```
 
+```{r}
+df_hits_last_iter_agg$feature_new <- as.character(df_hits_last_iter_agg$feature)
+df_hits_last_iter_agg$is_upper <- 0
+df_hits_last_iter_agg$is_upper[grep(x = df_hits_last_iter_agg$feature_new, "upper_", value=F)] <- 1
+df_hits_last_iter_agg$feature_new[df_hits_last_iter_agg$feature_group == "tf"]  <- gsub(x = df_hits_last_iter_agg$feature_new[df_hits_last_iter_agg$feature_group == "tf"], pattern = "cancer_liver_", "")
+df_hits_last_iter_agg$feature_new[df_hits_last_iter_agg$feature_group == "tf"] <- gsub(x = df_hits_last_iter_agg$feature_new[df_hits_last_iter_agg$feature_group == "tf"], pattern = ".human", "")
+df_hits_last_iter_agg$feature_new[df_hits_last_iter_agg$feature_group == "chromatin"] <- "DNase"
+df_hits_last_iter_agg$feature_new[df_hits_last_iter_agg$feature_group == "methyl"] <- "methyl"
+df_hits_last_iter_agg$feature_new[(df_hits_last_iter_agg$feature_group == "histones") & (df_hits_last_iter_agg$is_upper == 0)] <- unlist(lapply(df_hits_last_iter_agg$feature_new[(df_hits_last_iter_agg$feature_group == "histones") & (df_hits_last_iter_agg$is_upper == 0)], FUN = function(x) strsplit(x, split = "_")[[1]][[3]]))
+df_hits_last_iter_agg$feature_new[(df_hits_last_iter_agg$feature_group == "histones") & (df_hits_last_iter_agg$is_upper == 1)] <- paste0("upper_", unlist(lapply(df_hits_last_iter_agg$feature_new[(df_hits_last_iter_agg$feature_group == "histones") & (df_hits_last_iter_agg$is_upper == 1)], FUN = function(x) strsplit(x, split = "_")[[1]][[4]])))
+df_hits_last_iter_agg$feature_new[(df_hits_last_iter_agg$feature_group == "histones")] <- gsub(x = df_hits_last_iter_agg$feature_new[df_hits_last_iter_agg$feature_group == "histones"], pattern = ".human", "")
+
+df_hits_last_iter_agg <- df_hits_last_iter_agg %>%
+  inner_join(proper_feature_group_names, by=c("feature_group"="feature_group_name"))
+
+df_hits_last_iter_agg <- df_hits_last_iter_agg %>%
+  arrange(cancer_type, feature_group_name_proper, desc(feature_new))
+df_hits_last_iter_agg
+```
+
+```{r, fig.width=10, fig.height=12}
+df_hits_last_iter_agg1 <- df_hits_last_iter_agg %>%
+  inner_join(
+    df_hits_last_iter_agg %>%
+    ungroup() %>%
+    select(feature_group_name_proper, feature_new) %>%
+    unique() %>%
+    arrange(feature_group_name_proper, feature_new) %>%
+    mutate(r = row_number())) %>%
+  arrange(cancer_type, r)
+
+g1 <- ggplot(df_hits_last_iter_agg1, aes(x=cancer_type, y=reorder(feature_new, -r), fill=n_best)) + 
+  geom_tile() + 
+  scale_fill_gradientn(colours = pal)+
+  theme_light_custom(scale_fill = F)+
+  xlab("Cancer type")+
+  ylab("Feature")+
+  labs(fill="Number of datasets")
+g1
+# ggsave(filename = "Fig17.tiff", plot = g1, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 4, height = 5, scale = 2, compression = "lzw")
+```
+
+
+
 ```{r fig.height=12}
 g1 <- ggplot(df_hits_last_iter_agg, aes(x=cancer_type, y=feature,fill=n_best)) + 
   geom_tile() + 
   scale_fill_gradientn(colours = pal) + 
   xlab("Cancer type") + 
   ylab("Feature") +
-  theme_minimal()+ # minimal theme
   theme(
     text = element_text(size = 8, family = "arial"),
     axis.title.x = element_text(size = 10),
@@ -357,7 +362,7 @@ setdiff(all_f, sel_f)
 ```
 Это 9 фичей: модификации гистонов дли blood, brain, DnaseSeq для liver.
 
-Алгоритм Борута был применен всего к 10 * 30 * 10 = 2 700 датасетам. Посмотрим, какое количество раз каждый признак был включен в итоговый набор фичей в этих датасетах.
+Алгоритм Борута был применен всего к 10 * 30 * 10 = 3000 датасетам. Посмотрим, какое количество раз каждый признак был включен в итоговый набор фичей в этих датасетах.
 ```{r}
 by_f <- df_hits_last_iter %>%
   group_by(feature_group, feature) %>%
@@ -376,6 +381,240 @@ ggplot(by_f, aes(x=reorder(feature, total_sets, median), y=total_sets, fill=feat
   coord_flip() + 
   scale_fill_jco()
 ```
+```{r fig.width=10, fig.height=7}
+by_f$is_upper <- 0
+by_f$is_upper[grep(x=by_f$feature, pattern = "upper_")] <- 1
+by_f$new_feature<- by_f$feature
+by_f$new_feature[grep(x=by_f$new_feature, pattern = "DNase_seq")] <- "DNase_seq"
+by_f$new_feature[(by_f$new_feature == "DNase_seq") & (by_f$is_upper == 1)] <- "upper_DNase_seq" 
+by_f$new_feature[grep(x=by_f$new_feature, pattern = "DNA_methylation")] <- "DNA_methylation"
+by_f$new_feature[(by_f$new_feature == "DNA_methylation") & (by_f$is_upper == 1)] <- "upper_DNA_methylation" 
+by_f$new_feature[grep(x=by_f$new_feature, pattern = "H3K4me3")] <- "H3K4me3"
+by_f$new_feature[(by_f$new_feature == "H3K4me3") & (by_f$is_upper == 1)] <- "upper_H3K4me3"
+by_f$new_feature[grep(x=by_f$new_feature, pattern = "H3K36me3")] <- "H3K36me3"
+by_f$new_feature[(by_f$new_feature == "H3K36me3") & (by_f$is_upper == 1)] <- "upper_H3K36me3" 
+by_f$new_feature[grep(x=by_f$new_feature, pattern = "H3K27ac")] <- "H3K27ac"
+by_f$new_feature[(by_f$new_feature == "H3K27ac") & (by_f$is_upper == 1)] <- "upper_H3K27ac" 
+by_f$new_feature[grep(x=by_f$new_feature, pattern = "H3K27me3")] <- "H3K27me3"
+by_f$new_feature[(by_f$new_feature == "H3K27me3") & (by_f$is_upper == 1)] <- "upper_H3K27me3" 
+by_f$new_feature[grep(x=by_f$new_feature, pattern = "H3K4me1")] <- "H3K4me1"
+by_f$new_feature[(by_f$new_feature == "H3K4me1") & (by_f$is_upper == 1)] <- "upper_H3K4me1" 
+by_f$new_feature[grep(x=by_f$new_feature, pattern = "H3K9me3")] <- "H3K9me3"
+by_f$new_feature[(by_f$new_feature == "H3K9me3") & (by_f$is_upper == 1)] <- "upper_H3K9me3" 
+by_f$new_feature[grep(x=by_f$new_feature, pattern = "H3K9me3")] <- "H3K9me3"
+by_f$new_feature[(by_f$new_feature == "H3K9me3") & (by_f$is_upper == 1)] <- "upper_H3K9me3"
+by_f$new_feature[by_f$feature_group == "tf"] <- gsub(x = by_f$new_feature[by_f$feature_group == "tf"], pattern = "cancer_liver_", "")
+by_f$new_feature[by_f$feature_group == "tf"] <- gsub(x = by_f$new_feature[by_f$feature_group == "tf"], pattern = ".human", "")
+
+feat_colors <- as.character(proper_feature_group_names$colors)
+names(feat_colors) <- as.character(proper_feature_group_names$feature_group_name_proper)
+
+by_f <- by_f %>%
+  # inner_join(df_feat_proper, by="feature") %>%
+  inner_join(proper_feature_group_names, by=c("feature_group"="feature_group_name"))
+
+by_f <- by_f %>%  
+  group_by(feature_group_name_proper, new_feature) %>%
+  summarize(
+    total_sets = sum(total_sets)
+    )
+
+g1 <- ggplot(by_f, aes(x=reorder(new_feature, total_sets, median), y=total_sets, fill=feature_group_name_proper))+
+  geom_bar(stat="identity",color="black", position="dodge") + 
+  coord_flip() + 
+  scale_fill_manual(values = feat_colors)+
+  theme_light_custom(scale_fill = F)+
+  ylab("Total number of datasets")+
+  xlab("Feature")+
+  labs(fill='Feature group')
+g1
+# ggsave(filename = "Fig19b.tiff", plot = g1, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 5, height = 3, scale = 2.2, compression = "lzw")
+
+g2 <- ggplot(by_f[by_f$total_sets >= 300, ], aes(x=reorder(new_feature, total_sets, median), y=total_sets, fill=feature_group_name_proper))+
+  geom_bar(stat="identity",color="black", position="dodge") + 
+  coord_flip() + 
+  scale_fill_manual(values = feat_colors)+
+  theme_light_custom(scale_fill = F)+
+  ylab("Total number of datasets")+
+  xlab("Feature")+
+  labs(fill='Feature group')
+
+# ggsave(filename = "Fig19_sum.tiff", plot = g2, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 5, height = 3, scale = 2.2, compression = "lzw")
+g2
+```
+
+
+```{r}
+by_f_canc <- df_hits_last_iter %>%
+  group_by(cancer_type, feature_group, feature) %>%
+  summarize(
+    total_sets = n()
+    ) %>%
+  arrange(desc(total_sets))
+
+by_f_canc
+```
+
+```{r}
+by_f_canc$is_upper <- 0
+by_f_canc$is_upper[grep(x=by_f_canc$feature, pattern = "upper_")] <- 1
+by_f_canc$new_feature<- by_f_canc$feature
+by_f_canc$new_feature[grep(x=by_f_canc$new_feature, pattern = "DNase_seq")] <- "DNase_seq"
+by_f_canc$new_feature[(by_f_canc$new_feature == "DNase_seq") & (by_f_canc$is_upper == 1)] <- "upper_DNase_seq" 
+by_f_canc$new_feature[grep(x=by_f_canc$new_feature, pattern = "DNA_methylation")] <- "DNA_methylation"
+by_f_canc$new_feature[(by_f_canc$new_feature == "DNA_methylation") & (by_f_canc$is_upper == 1)] <- "upper_DNA_methylation" 
+by_f_canc$new_feature[grep(x=by_f_canc$new_feature, pattern = "H3K4me3")] <- "H3K4me3"
+by_f_canc$new_feature[(by_f_canc$new_feature == "H3K4me3") & (by_f_canc$is_upper == 1)] <- "upper_H3K4me3"
+by_f_canc$new_feature[grep(x=by_f_canc$new_feature, pattern = "H3K36me3")] <- "H3K36me3"
+by_f_canc$new_feature[(by_f_canc$new_feature == "H3K36me3") & (by_f_canc$is_upper == 1)] <- "upper_H3K36me3" 
+by_f_canc$new_feature[grep(x=by_f_canc$new_feature, pattern = "H3K27ac")] <- "H3K27ac"
+by_f_canc$new_feature[(by_f_canc$new_feature == "H3K27ac") & (by_f_canc$is_upper == 1)] <- "upper_H3K27ac" 
+by_f_canc$new_feature[grep(x=by_f_canc$new_feature, pattern = "H3K27me3")] <- "H3K27me3"
+by_f_canc$new_feature[(by_f_canc$new_feature == "H3K27me3") & (by_f_canc$is_upper == 1)] <- "upper_H3K27me3" 
+by_f_canc$new_feature[grep(x=by_f_canc$new_feature, pattern = "H3K4me1")] <- "H3K4me1"
+by_f_canc$new_feature[(by_f_canc$new_feature == "H3K4me1") & (by_f_canc$is_upper == 1)] <- "upper_H3K4me1" 
+by_f_canc$new_feature[grep(x=by_f_canc$new_feature, pattern = "H3K9me3")] <- "H3K9me3"
+by_f_canc$new_feature[(by_f_canc$new_feature == "H3K9me3") & (by_f_canc$is_upper == 1)] <- "upper_H3K9me3" 
+by_f_canc$new_feature[grep(x=by_f_canc$new_feature, pattern = "H3K9me3")] <- "H3K9me3"
+by_f_canc$new_feature[(by_f_canc$new_feature == "H3K9me3") & (by_f_canc$is_upper == 1)] <- "upper_H3K9me3" 
+by_f_canc <- by_f_canc %>%
+  select(cancer_type, feature_group, new_feature, total_sets) %>%
+  dcast(feature_group + new_feature ~ cancer_type, value.var = "total_sets") %>%
+  melt(id.var=c("new_feature", "feature_group")) %>%
+  mutate(
+    total_sets = ifelse(is.na(value), 0 , value)
+  )
+
+by_f_canc_agg <- by_f_canc %>%
+  group_by(feature_group, new_feature) %>%
+  summarize(
+    mean_sets = mean(total_sets),
+    med_sets = median(total_sets)
+  )
+
+by_f_canc_agg %>%
+  arrange(desc(med_sets))
+
+feat_colors <- as.character(proper_feature_group_names$colors)
+names(feat_colors) <- as.character(proper_feature_group_names$feature_group_name_proper)
+
+by_f_canc_agg <- by_f_canc_agg %>%
+  inner_join(proper_feature_group_names, by=c("feature_group"="feature_group_name"))
+
+by_f_canc_agg$new_feature[by_f_canc_agg$feature_group == "tf"] <- gsub(x = by_f_canc_agg$new_feature[by_f_canc_agg$feature_group == "tf"], pattern = "cancer_liver_", "")
+by_f_canc_agg$new_feature[by_f_canc_agg$feature_group == "tf"] <- gsub(x = by_f_canc_agg$new_feature[by_f_canc_agg$feature_group == "tf"], pattern = ".human", "")
+
+by_f_canc <- by_f_canc %>%
+  inner_join(df_feat_proper, by=c("new_feature"="feature")) %>%
+  inner_join(proper_feature_group_names, by=c("feature_group"="feature_group_name"))
+
+by_f_canc$new_feature[by_f_canc$feature_group == "tf"] <- gsub(x = by_f_canc$new_feature[by_f_canc$feature_group == "tf"], pattern = "cancer_liver_", "")
+by_f_canc$new_feature[by_f_canc$feature_group == "tf"] <- gsub(x = by_f_canc$new_feature[by_f_canc$feature_group == "tf"], pattern = ".human", "")
+
+```
+
+
+```{r fig.height=7}
+g3 <- ggplot(by_f_canc_agg[by_f_canc_agg$med_sets >= 10, ], aes(x=reorder(new_feature, med_sets), y=med_sets, fill=feature_group_name_proper))+
+  geom_bar(stat="identity", color="black", position="dodge")+
+  coord_flip()+
+  scale_fill_manual(values = feat_colors)+
+  theme_light_custom(scale_fill = F)+
+  xlab("Median number of datasets")+
+  ylab("Feature")+
+  labs(fill='Feature group')
+g3
+# ggsave(filename = "Fig19_med.tiff", plot = g3, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 5, height = 3, scale = 2.2, compression = "lzw")
+```
+
+
+
+```{r}
+best_f <- by_f_canc_agg %>%
+  ungroup() %>%
+  arrange(desc(med_sets)) %>%
+  filter(row_number() <= 8) %>%
+  select(new_feature) %>%
+  as.vector()
+best_f
+
+by_f_canc_plot <- by_f_canc %>% inner_join(best_f)
+by_f_canc_plot$new_feature[by_f_canc_plot$new_feature == "upper_cancer_liver_RXRA.human"] <- "upper_RXRA"
+by_f_canc_plot$new_feature[by_f_canc_plot$new_feature == "upper_cancer_liver_CTCF.human"] <- "upper_CTCF"
+
+g1 <- ggplot(by_f_canc_plot, aes(x=variable, y=total_sets, color=new_feature, group=new_feature))+
+  geom_line()+
+  geom_point()+
+  theme_light_custom()+
+  scale_color_jco()+
+  xlab("Cancer type")+
+  ylab("Total number of datasets")+
+  labs(color="Feature")
+g1
+# ggsave(filename = "Fig15_med.tiff", plot = g1, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 5, height = 3, scale = 2.2, compression = "lzw")
+```
+
+```{r}
+# g2 <- ggplot(
+#   by_f_canc_plot, aes(y=total_sets, x=factor(total_sets), fill=new_feature)
+# )+
+#   facet_wrap(~variable, scales="free", nrow=2)+
+#   geom_bar(stat="identity", position="dodge", color="black")+
+#   theme_light_custom()+
+#   xlab("Feature")+
+#   ylab("Total number of datasets")+
+#   labs(fill="Feature")+
+#   theme(
+#         axis.text.x = element_blank(),
+#         axis.ticks.x = element_blank()
+#     )
+# g2
+# ggsave(filename = "Fig16.tiff", plot = g2, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 5, height = 3, scale = 2.2, compression = "lzw")
+```
+
+By sum
+```{r}
+best_f <- by_f %>%
+  arrange(desc(total_sets)) %>%
+  ungroup() %>%
+  filter(row_number() <= 8) %>%
+  select(new_feature) %>%
+  as.vector()
+best_f
+by_f_canc_plot <- by_f_canc %>% inner_join(best_f)
+# by_f_canc_plot$new_feature[by_f_canc_plot$new_feature == "upper_cancer_liver_RXRA.human"] <- "upper_RXRA" 
+# by_f_canc_plot$new_feature[by_f_canc_plot$new_feature == "upper_cancer_liver_CTCF.human"] <- "upper_CTCF" 
+
+g1 <- ggplot(by_f_canc_plot, aes(x=variable, y=total_sets, color=new_feature, group=new_feature))+
+  geom_line()+
+  geom_point()+
+  theme_light_custom()+
+  scale_color_jco()+
+  xlab("Cancer type")+
+  ylab("Total number of datasets")+
+  labs(color="Feature")
+g1
+# ggsave(filename = "Fig15_sum.tiff", plot = g1, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 5, height = 3, scale = 2.2, compression = "lzw")
+```
+
+
+
+
+```{r}
+by_f_canc_out <- by_f_canc %>%
+  inner_join(proper_feature_group_names, by=c("feature_group"="feature_group_name"))
+by_f_canc_out$feature_name <- by_f_canc_out$feature
+by_f_canc_out$feature_name[(by_f_canc_out$feature_group == "tf")] <- gsub(x=by_f_canc_out$feature_name[(by_f_canc_out$feature_group == "tf")], pattern = "cancer_liver_", replacement = "")
+by_f_canc_out$feature_name[(by_f_canc_out$feature_group == "tf")] <- gsub(x=by_f_canc_out$feature_name[(by_f_canc_out$feature_group == "tf")], pattern = ".human", replacement = "")
+# unique(by_f_canc_out$feature_name)[order(unique(by_f_canc_out$feature_name))]
+by_f_canc_out <- by_f_canc_out %>%
+  ungroup() %>%
+  select(cancer_type, feature_group_name_proper, feature_name, total_sets) %>%
+  arrange(desc(total_sets))
+# write.csv(by_f_canc_out, "../paper_materials/table_boruta.csv")
+```
+
+
 
 Теперь выберем пул фичей для каждого типа рака.
 

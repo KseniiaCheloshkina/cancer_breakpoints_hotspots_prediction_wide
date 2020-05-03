@@ -16,10 +16,8 @@ library(ggpubr)
 library(dplyr)
 library(reshape2)
 
-
-
 library(openxlsx)
-
+source("../run/tools.R")
 win_len <- 100000
 
 data_path <- "../data/output/classifier_results_by_feature_group/" 
@@ -35,7 +33,7 @@ recall_data <- rbind(
   read.csv(paste0(data_path, "result_recall_100000_0.csv"), row.names = 1, stringsAsFactors = F)
 )
 recall_data$agg_level[recall_data$agg_level == '99'] <- '99.'
- <- read.csv(paste0(data_path, "result_imp_100000.csv"), row.names = 1, stringsAsFactors = F)
+imp_data <- read.csv(paste0(data_path, "result_imp_100000.csv"), row.names = 1, stringsAsFactors = F)
 imp_data <- rbind(
   imp_data,
   read.csv(paste0(data_path, "result_imp_100000_0.csv"), row.names = 1, stringsAsFactors = F)
@@ -616,6 +614,106 @@ writeData(wb, sheet="Table 2", paper_table2)
 ```
 
 
+### Boxplots of all features and by groups
+
+```{r}
+source("../run/tools.R")
+roc_auc_data <- roc_auc_data %>%
+  inner_join(proper_feature_group_names, by=c("feat_group" = "feature_group_name"))
+recall_data <- recall_data %>%
+  inner_join(proper_feature_group_names, by=c("feat_group" = "feature_group_name"))
+
+# baseline_data_path <- "../data/output/classifier_results/"
+baseline_data_path <- "../data/output/classifier_results_best_features_boruta_sign_all_agg_levels/"
+roc_auc_data_base <- read.csv(paste0(baseline_data_path, "result_roc_auc_100000.csv"), row.names = 1, stringsAsFactors = F)
+recall_data_base <- read.csv(paste0(baseline_data_path, "result_recall_100000.csv"), row.names = 1, stringsAsFactors = F)
+
+roc_auc_data_base$feature_group_name_proper <- "all"
+recall_data_base$feature_group_name_proper <- "all"
+
+all_roc_auc_data <- rbind.data.frame(
+  roc_auc_data_base %>% select(cancer_type, agg_level, feature_group_name_proper, te_auc, tr_auc),
+  roc_auc_data %>% select(cancer_type, agg_level, feature_group_name_proper, te_auc, tr_auc)
+) %>%
+  mutate(
+    auc_diff = tr_auc - te_auc
+  )
+
+all_recall_data <- rbind.data.frame(
+  recall_data_base %>% select(cancer_type, agg_level, feature_group_name_proper, quantile, lift_recall),
+  recall_data %>% select(cancer_type, agg_level, feature_group_name_proper, quantile, lift_recall)
+)
+
+feat_colors <- c(as.character(proper_feature_group_names$colors), "#4A6990")
+names(feat_colors) <- c(as.character(proper_feature_group_names$feature_group_name_proper), "all")
+
+pl_values <- rbind.data.frame(
+  all_roc_auc_data %>%
+    select(cancer_type, agg_level, feature_group_name_proper, te_auc) %>%
+    setNames(c("cancer_type", "agg_level", "feature_group_name_proper", "value")) %>%
+    mutate(
+      metric = "ROC AUC"
+    ),
+    all_recall_data %>% 
+      filter(quantile == "0.03") %>%
+      select(cancer_type, agg_level, feature_group_name_proper, lift_recall) %>%
+      setNames(c("cancer_type", "agg_level", "feature_group_name_proper", "value")) %>%
+      mutate(
+        metric = "Lift of recall"
+      )
+  )
+
+agg <- pl_values %>%
+  group_by(metric, cancer_type, agg_level, feature_group_name_proper) %>%
+  summarize(
+    med_val = median(value),
+    q75_val = quantile(value, 0.75)
+    ) %>%
+  arrange(agg_level, metric, cancer_type, med_val, q75_val) %>%
+  mutate(
+    r = row_number()
+  )
+
+pl_values <- pl_values%>%
+  inner_join(
+    agg %>% 
+      select(metric, cancer_type, agg_level, feature_group_name_proper, r), 
+    by=c("metric", "cancer_type", "agg_level", "feature_group_name_proper"))
+
+
+agg_lev <- "99.5."
+
+g1 <- ggplot(pl_values[pl_values$agg_level == agg_lev, ], 
+       aes(x=r, y=value, fill=reorder(feature_group_name_proper, r))) + 
+  geom_boxplot() +
+  facet_grid(metric~cancer_type, scales="free")+
+  # theme_light_custom()
+  theme_light()+
+  xlab("Feature group")+
+  ylab("Metric value") +
+  labs(fill = "Feature group")+
+  scale_x_continuous(
+    breaks = pl_values[pl_values$agg_level == agg_lev, "r"]
+  ) +
+  scale_fill_manual(values = feat_colors)+
+  theme(
+    axis.title.x=element_blank(),
+    axis.text.x=element_blank(),
+    axis.ticks.x=element_blank(),
+    text = element_text(size = 8, family = "sans"),
+    axis.title.y = element_text(size = 10),
+    axis.text.y = element_text(hjust = 1),
+    legend.position="bottom", legend.title = element_text(size = 10),    
+    )
+
+# ggsave(filename = "Fig20a_99.tiff", plot = g1, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 5, height = 3, scale = 2, compression = "lzw")
+# ggsave(filename = "Fig20a_995.tiff", plot = g1, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 5, height = 3, scale = 2, compression = "lzw")
+```
+
+
+
+
+
 ### Feature importance inside groups
 
 ```{r fig.width=10}
@@ -652,6 +750,8 @@ ggplot(pl_d[pl_d$feat_group == 'sec_str', ], aes(x=feature, y=importance, fill=f
     ) +
   labs(fill = "Seecondary structures features")
 ```
+
+
 ```{r fig.width=10}
 ggplot(pl_d[pl_d$feat_group == 'reg', ], aes(x=feature, y=importance)) + 
   facet_wrap(~ cancer_type, ncol = 5, scales="free") + 
@@ -746,7 +846,7 @@ g_f <- ggarrange(g[[canc_type[1]]], g[[canc_type[2]]], g[[canc_type[3]]], g[[can
           font.label = list(size = 10, color = "black", face ="bold"))
 # ggsave(filename = "test1.tiff", plot = g_f, device = "tiff", path = "../paper_materials/supplementary figures/",
 #        dpi = 600, units = "in", width = 6, height = 6, scale = 2, compression = "lzw")
-
+g_f
 g <- list()
 for (c in c("ovary", "pancreatic", "prostate", "skin", "uterus")){
   g[[c]] <- ggplot(pl_data[pl_data$cancer_type == c, ], aes(x=agg_level, y=importance, fill=feature)) + 
@@ -774,6 +874,366 @@ g_f <- ggarrange(g[[canc_type[6]]], g[[canc_type[7]]], g[[canc_type[8]]], g[[can
 
 ```
 
+```{r fig.height=10}
+sec_str_data <- imp_data %>%
+  filter(feat_group == "sec_str")
+sec_str_data$is_upper <- 0 
+sec_str_data[grep(x = sec_str_data$feature, pattern = "upper_"), "is_upper"] <- 1
+canc <- unique(sec_str_data$cancer_type)
+
+feat_colors <- pal_jco("default")(10)
+feat_colors <- gsub(x = feat_colors, pattern = "FF", replacement = "")
+feat_colors <- feat_colors[1:9]
+names(feat_colors) <- unique(sec_str_data$feature[sec_str_data$is_upper == 0])
+
+sec_str_data$raw_feature <- gsub(x = sec_str_data$feature, pattern = "upper_", replacement = "")
+sec_str_data$upper[sec_str_data$is_upper == 0] <- "Current"
+sec_str_data$upper[sec_str_data$is_upper == 1] <- "Distant"
+
+g1 <- ggplot(
+  sec_str_data[(sec_str_data$cancer_type %in% canc[1:5]), ],
+  aes(x=agg_level, y=importance, fill=as.factor(raw_feature))
+) + 
+  geom_boxplot()+
+  facet_grid(cancer_type~upper, scales="free")+
+  theme_light_custom() + 
+  scale_fill_manual(values = feat_colors)+
+  labs(fill='Feature')+
+  ylab("Importance")+
+  xlab("Labeling type")
+
+# ggsave(filename = "Fig12_1.tiff", plot = g1, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 6, height = 5, scale = 2.2, compression = "lzw")
+
+g2 <- ggplot(
+  sec_str_data[(sec_str_data$cancer_type %in% canc[6:10]), ],
+  aes(x=agg_level, y=importance, fill=as.factor(raw_feature))
+) + 
+  geom_boxplot()+
+  facet_grid(cancer_type~upper, scales="free")+
+  theme_light_custom() + 
+  scale_fill_manual(values = feat_colors)+
+  labs(fill='Feature')+
+  ylab("Importance")+
+  xlab("Labeling type")
+
+# ggsave(filename = "Fig12_2.tiff", plot = g2, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 6, height = 5, scale = 2.2, compression = "lzw")
+
+g_f <- ggarrange(g1, g2,  
+          labels = c("A", "B"),
+          ncol = 1, nrow = 2, heights = c(1, 1),
+          font.label = list(size = 10, color = "black", face ="bold"))
+# ggsave(filename = "Fig12.tiff", plot = g_f, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 6, height = 5, scale = 2.2, compression = "lzw")
+breast_sec_str <- sec_str_data[(sec_str_data$cancer_type == "breast") & (sec_str_data$agg_level == "99."), ]
+```
+
+TF
+
+```{r}
+tf_data <- imp_data %>%
+  filter(feat_group == "tf")
+tf_data$feature <- gsub(x = tf_data$feature, pattern = "cancer_liver_", replacement = "")
+tf_data$feature <- gsub(x = tf_data$feature, pattern = ".human", replacement = "")
+
+tf_data$is_upper <- 0 
+tf_data[grep(x = tf_data$feature, pattern = "upper_"), "is_upper"] <- 1
+canc <- unique(tf_data$cancer_type)
+
+feat_colors <- pal_jco("default")(10)
+feat_colors <- c(feat_colors, "#0073C27F", "#EFC0007F", "#8686867F", "#CD534C7F","#8F77007F", "#3B3B3B7F")
+names(feat_colors) <- unique(tf_data$feature[tf_data$is_upper == 0])
+
+tf_data$raw_feature <- gsub(x = tf_data$feature, pattern = "upper_", replacement = "")
+tf_data$upper[tf_data$is_upper == 0] <- "Current"
+tf_data$upper[tf_data$is_upper == 1] <- "Distant"
+
+g1 <- ggplot(
+  tf_data[(tf_data$cancer_type %in% canc[1:5]), ],
+  aes(x=agg_level, y=importance, fill=as.factor(raw_feature))
+) + 
+  geom_boxplot()+
+  facet_grid(cancer_type~upper, scales="free")+
+  theme_light_custom() + 
+  scale_fill_manual(values = feat_colors)+
+  labs(fill='Feature')+
+  ylab("Importance")+
+  xlab("Labeling type")
+
+# ggsave(filename = "Fig14_1.tiff", plot = g1, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 6, height = 5, scale = 2.2, compression = "lzw")
+
+g2 <- ggplot(
+  tf_data[(tf_data$cancer_type %in% canc[6:10]), ],
+  aes(x=agg_level, y=importance, fill=as.factor(raw_feature))
+) + 
+  geom_boxplot()+
+  facet_grid(cancer_type~upper, scales="free")+
+  theme_light_custom() + 
+  scale_fill_manual(values = feat_colors)+
+  labs(fill='Feature')+
+  ylab("Importance")+
+  xlab("Labeling type")
+
+# ggsave(filename = "Fig14_2.tiff", plot = g2, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 6, height = 5, scale = 2.2, compression = "lzw")
+
+g_f <- ggarrange(g1, g2,  
+          labels = c("A", "B"),
+          ncol = 1, nrow = 2, heights = c(1, 1),
+          font.label = list(size = 10, color = "black", face ="bold"))
+# ggsave(filename = "Fig14.tiff", plot = g_f, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 6, height = 5, scale = 2.2, compression = "lzw")
+breast_tf <- tf_data[(tf_data$cancer_type == "breast") & (tf_data$agg_level == "99."), ]
+```
+
+Regions
+
+```{r fig.width=8}
+reg_data <- imp_data %>%
+  filter(feat_group == "reg")
+reg_data$is_upper <- 0 
+reg_data[grep(x = reg_data$feature, pattern = "upper_"), "is_upper"] <- 1
+canc <- unique(reg_data$cancer_type)
+
+feat_colors <- pal_jco("default")(10)
+feat_colors <- c(feat_colors, "#0073C27F", "#EFC0007F", "#8686867F", "#CD534C7F","#8F77007F", "#3B3B3B7F")
+names(feat_colors) <- unique(reg_data$feature[reg_data$is_upper == 0])
+
+reg_data$raw_feature <- gsub(x = reg_data$feature, pattern = "upper_", replacement = "")
+reg_data$upper[reg_data$is_upper == 0] <- "Current"
+reg_data$upper[reg_data$is_upper == 1] <- "Distant"
+
+g3 <- ggplot(
+  reg_data[(reg_data$cancer_type %in% canc[1:5]), ],
+  aes(x=agg_level, y=importance, fill=reorder(raw_feature, importance, FUN = median))
+) + 
+  geom_boxplot()+
+  facet_grid(cancer_type~upper, scales="free")+
+  theme_light()+  
+  scale_fill_manual(values = feat_colors)+
+  labs(fill='Feature')+
+  ylab("Importance")+
+  xlab("Labeling type")+
+  guides(fill = FALSE)+
+  theme(
+    text = element_text(size = 8, family = "sans"),
+    axis.title.x = element_text(size = 10),
+    axis.title.y = element_text(size = 10),
+    axis.text.y = element_text(hjust = 1),
+    legend.position="bottom", legend.title = element_text(size = 10),
+    legend.text = element_text(size=8)
+    )
+
+g4 <- ggplot(
+  reg_data[(reg_data$cancer_type %in% canc[6:10]), ],
+  aes(x=agg_level, y=importance, fill=reorder(raw_feature, importance, FUN = median))
+) + 
+  geom_boxplot()+
+  facet_grid(cancer_type~upper, scales="free")+
+  theme_light() + 
+  scale_fill_manual(values = feat_colors)+
+  labs(fill='Feature')+
+  ylab("Importance")+
+  xlab("Labeling type")+
+  theme(
+    text = element_text(size = 8, family = "sans"),
+    axis.title.x = element_text(size = 10),
+    axis.title.y = element_text(size = 10),
+    axis.text.y = element_text(hjust = 1),
+    legend.position="bottom", legend.title = element_text(size = 10),
+    legend.text = element_text(size=8)
+    )
+
+g_f <- ggarrange(g3, g4,  
+          labels = c("A", "B"),
+          ncol = 1, nrow = 2, heights = c(1, 1),
+          font.label = list(size = 10, color = "black", face ="bold"))
+g_f
+# ggsave(filename = "Fig21.tiff", plot = g_f, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 6, height = 5, scale = 2.2, compression = "lzw")
+```
+
+Plot for breast
+
+```{r}
+feat_colors <- pal_jco("default")(10)
+feat_colors <- gsub(x = feat_colors, pattern = "FF", replacement = "")
+feat_colors <- feat_colors[1:9]
+names(feat_colors) <- unique(sec_str_data$feature[sec_str_data$is_upper == 0])
+
+g1 <- ggplot(
+  breast_sec_str,
+ aes(x=reorder(raw_feature, importance, FUN=median), y=importance, fill=reorder(raw_feature, importance, FUN=median))
+) + 
+  geom_boxplot()+
+  facet_wrap(~upper, scales="free")+
+  theme_light_custom() + 
+  scale_fill_manual(values = feat_colors)+
+  labs(fill='Feature')+
+  ylab("Importance")+
+  xlab("Labeling type")+
+  theme(
+    axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+    )
+g1
+
+feat_colors <- pal_jco("default")(10)
+feat_colors <- c(feat_colors, "#0073C27F", "#EFC0007F", "#8686867F", "#CD534C7F","#8F77007F", "#3B3B3B7F")
+names(feat_colors) <- unique(tf_data$feature[tf_data$is_upper == 0])
+
+g2 <- ggplot(
+  breast_tf,
+  aes(x=reorder(raw_feature, importance, FUN=median), y=importance, fill=reorder(raw_feature, importance, FUN=median))
+) + 
+  geom_boxplot()+
+  facet_wrap(~upper, scales="free")+
+  theme_light_custom() + 
+  scale_fill_manual(values = feat_colors)+
+  labs(fill='Feature')+
+  ylab("Importance")+
+  xlab("Labeling type")+
+  theme(
+    axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+    )+
+  guides(fill=guide_legend(nrow = 2))
+g2
+
+g_f <- ggarrange(g1, g2,  
+          labels = c("A", "B"),
+          ncol = 1, nrow = 2, heights = c(1, 1),
+          font.label = list(size = 10, color = "black", face ="bold"))
+g_f
+# ggsave(filename = "Fig22.tiff", plot = g_f, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 5, height = 3, scale = 2.2, compression = "lzw")
+
+```
+
+
+
+
+From the beginning
+
+```{r}
+df_onegroup <- read.xlsx('../reports/summary14.xlsx')
+
+df_onegroup <- df_onegroup %>%
+  inner_join(
+    proper_feature_group_names,
+    by=c("Feature.group" = "feature_group_name")
+  )
+df_onegroup_copy <- df_onegroup
+```
+
+
+Histogram of mean test ROC AUC and mean lift of recall for al cancers by feature group
+```{r}
+g1 <- ggplot(df_onegroup, 
+       aes(x=reorder(feature_group_name_proper, Mean.lift.of.recall), 
+           y=Mean.lift.of.recall, fill=Labeling.type))+
+  geom_boxplot() +
+  theme_light_custom() +
+  xlab("Feature group") + 
+  ylab("Mean lift of recall") +
+  labs(fill = "Labeling type")
+g1
+# ggsave(filename = "Fig8.tiff", plot = g1, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 5, height = 3, scale = 2, compression = "lzw")
+```
+
+```{r}
+g2 <- ggplot(df_onegroup, 
+             aes(x=reorder(feature_group_name_proper, Mean.test.ROC.AUC), y=Mean.test.ROC.AUC, fill=Labeling.type))+
+  geom_boxplot()+
+  theme_light_custom()+
+  xlab("Feature group") + 
+  ylab("Mean ROC AUC") +
+  labs(fill = "Labeling type")
+g2
+# ggsave(filename = "Fig9.tiff", plot = g2, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 5, height = 3, scale = 2, compression = "lzw")
+
+g_f <- ggarrange(g1, g2,  
+          labels = c("A", "B"),
+          ncol = 1, nrow = 2, heights = c(1, 1),
+          font.label = list(size = 10, color = "black", face ="bold"))
+# ggsave(filename = "Fig8.5.tiff", plot = g_f, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 6, height = 5, scale = 2.2, compression = "lzw")
+```
+
+
+By cancer type - mean (across all labeling types) ratio of current mean lift of recall from max mean lift of recall for the cancer type  без 99,9
+
+```{r fig.height=10}
+df_onegroup_1 <- df_onegroup_copy %>%
+  group_by(Cancer.type, Labeling.type) %>%
+  summarize(
+    max_lift = max(Mean.lift.of.recall),
+    max_roc = max(Mean.test.ROC.AUC)
+  )
+df_onegroup_by_cancer <- df_onegroup_copy %>%
+  inner_join(
+    df_onegroup_1
+  ) %>%
+  mutate(
+    ratio_lift = Mean.lift.of.recall/max_lift,
+    ratio_roc = Mean.test.ROC.AUC/max_roc,
+  ) %>%
+  filter(Labeling.type != "99.9.") %>%
+  group_by(Cancer.type, Labeling.type) %>%
+  mutate(
+    rank_ratio_lift = dense_rank(ratio_lift),
+    rank_ratio_roc = dense_rank(ratio_roc)
+  ) %>%
+  group_by(Cancer.type, feature_group_name_proper) %>%
+  summarize(
+    mean_ratio_lift = mean(ratio_lift),
+    mean_rank_ratio_lift = mean(rank_ratio_lift),
+    mean_ratio_roc = mean(ratio_roc),
+    mean_rank_ratio_roc = mean(rank_ratio_roc)
+  )
+df_onegroup_by_cancer_1 <- df_onegroup_by_cancer %>%
+  ungroup() %>%
+  arrange(Cancer.type, -mean_ratio_lift) %>% 
+  mutate(.r = row_number())
+
+g3 <- ggplot(df_onegroup_by_cancer_1, 
+       aes(x=-.r,
+           y=mean_ratio_lift, fill=feature_group_name_proper))+
+  geom_bar(position="dodge", stat='identity', color='black', width=1)+
+  facet_wrap(~Cancer.type, ncol = 2, scales="free")+
+  coord_flip()+
+  theme_light_custom()+
+  scale_x_continuous( 
+    breaks = -df_onegroup_by_cancer_1$.r,  
+    labels = df_onegroup_by_cancer_1$feature_group_name_proper
+  ) +
+  scale_fill_manual(values = colors)+
+  ylab("Scaled mean lift of recall")+
+  xlab("Feature group") +
+  labs(fill="Feature group")
+```
+
+By cancer type - mean (across all labeling types) ratio of current mean ROC AUC from max mean ROC AUC for the cancer type  без 99,9
+
+```{r fig.height=10}
+df_onegroup_by_cancer_2 <- df_onegroup_by_cancer %>%
+  ungroup() %>%
+  arrange(Cancer.type, -mean_ratio_roc) %>%
+  mutate(.r = row_number())
+
+g4 <- ggplot(df_onegroup_by_cancer_2, 
+       aes(x=-.r,
+           y=mean_ratio_roc, fill=feature_group_name_proper))+
+  geom_bar(position="dodge", stat='identity', color='black')+
+  facet_wrap(~Cancer.type, ncol = 2, scales="free")+
+  coord_flip()+
+  theme_light_custom()+
+  scale_x_continuous(  # This handles replacement of .r for x
+    breaks = -df_onegroup_by_cancer_2$.r,     # notice need to reuse data frame
+    labels = df_onegroup_by_cancer_2$feature_group_name_proper
+  ) +
+  scale_fill_manual(values = colors)+
+  ylab("Scaled mean ROC AUC")+
+  xlab("Feature group") +
+  labs(fill="Feature group")
+
+g_f <- ggarrange(g3, g4,  
+          labels = c("A", "B"),
+          ncol = 1, nrow = 2, heights = c(1, 1),
+          font.label = list(size = 10, color = "black", face ="bold"))
+# ggsave(filename = "Fig10.tiff", plot = g_f, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 6, height = 5, scale = 2.2, compression = "lzw")
+```
 
 
 
@@ -827,3 +1287,111 @@ q5 <- roc %>%
 
 ```
 
+
+### Save paper tables for Boruta
+```{r}
+# roc auc
+roc_data <- roc_auc_data_base %>%
+  mutate(
+    train_test_diff = tr_auc - te_auc
+  ) %>%
+  group_by(cancer_type, agg_level) %>%
+  summarize(
+    min_test_auc = min(te_auc),
+    sd_test_auc = sd(te_auc),
+    median_test_auc = median(te_auc),
+    mean_test_auc = mean(te_auc),
+    train_test_diff = mean(train_test_diff),
+    n_ex = n()
+  ) %>%
+  mutate(
+    ci_lower_roc_auc = mean_test_auc - 1.96 * sd_test_auc / sqrt(n_ex),
+    ci_upper_roc_auc = mean_test_auc + 1.96 * sd_test_auc / sqrt(n_ex), 
+  ) %>%
+  select(-n_ex)
+
+# recall
+recall_data_base$agg_level <- as.character(recall_data_base$agg_level)
+recall_data_base$quantile_chr <- as.character(recall_data_base$quantile)
+map_df <- data.frame(agg_level=c("99.", "99.5.", "99.9."), agg_level_num = c(0.01, 0.005, 0.001))
+
+recall_data_base <- recall_data_base %>%
+  inner_join(map_df)
+recall_data_base$lift_precision <- recall_data_base$precision / recall_data_base$agg_level_num
+
+ci_stats <- recall_data_base %>%
+  group_by(cancer_type, agg_level, quantile) %>%
+  summarize(
+    mean_recall = mean(recall),
+    mean_lift_recall = mean(lift_recall),
+    mean_precision = mean(precision),
+    mean_lift_precision = mean(lift_precision),
+    sd_recall = sd(recall),
+    sd_lift_recall = sd(lift_recall),
+    sd_precision = sd(precision),
+    sd_lift_precision = sd(lift_precision),
+    n_ex = n()
+  ) %>%
+  mutate(
+    ci_lower_recall = mean_recall - 1.96 * sd_recall / sqrt(n_ex),
+    ci_upper_recall = mean_recall + 1.96 * sd_recall / sqrt(n_ex),
+    
+    ci_lower_lift_recall = mean_lift_recall - 1.96 * sd_lift_recall / sqrt(n_ex),
+    ci_upper_lift_recall = mean_lift_recall + 1.96 * sd_lift_recall / sqrt(n_ex),    
+    
+    ci_lower_precision = mean_precision - 1.96 * sd_precision / sqrt(n_ex),
+    ci_upper_precision = mean_precision + 1.96 * sd_precision / sqrt(n_ex),       
+    
+    ci_lower_lift_precision = mean_lift_precision - 1.96 * sd_lift_precision / sqrt(n_ex),
+    ci_upper_lift_precision = mean_lift_precision + 1.96 * sd_lift_precision / sqrt(n_ex)
+  )
+recall_stats_hsp <- ci_stats %>% 
+  filter(quantile %in% c(0.001, 0.005, 0.01,0.02,0.03, 0.040, 0.050, 0.100)) %>%
+  select(cancer_type, agg_level, quantile, mean_recall, mean_precision, mean_lift_recall, ci_lower_lift_recall, ci_upper_lift_recall, mean_lift_precision, ci_lower_lift_precision,ci_upper_lift_precision)
+
+roc <- roc_data %>%
+  select("cancer_type", "agg_level", "min_test_auc", "sd_test_auc", "median_test_auc", "mean_test_auc",
+         "train_test_diff", "ci_lower_roc_auc", "ci_upper_roc_auc") %>%
+  setNames(c("Cancer type",	"Labeling type", "Min test ROC AUC",	"SD test ROC AUC",	"Median test ROC AUC",	
+             "Mean test ROC AUC", "Train-test difference ROC AUC", "Lower bound of confidence interval for mean test ROC AUC",	
+             "Upper bound of confidence interval for mean test ROC AUC"))
+
+rec_3 <- recall_stats_hsp[recall_stats_hsp$quantile == 0.03, ] %>%
+  select(c("cancer_type", "agg_level","mean_recall", "mean_lift_recall", "ci_lower_lift_recall",
+           "ci_upper_lift_recall",  "mean_precision","mean_lift_precision", "ci_lower_lift_precision", 
+           "ci_upper_lift_precision")) %>%
+  setNames(c("Cancer type",		"Labeling type","Mean recall",	"Mean lift of recall",
+  "Lower bound of confidence interval for mean lift of recall",	"Upper bound of confidence interval for mean  lift of recall",
+  "Mean precision",	"Mean lift of precision",	"Lower bound of confidence interval for mean lift of precision",
+  "Upper bound of confidence interval for mean  lift of precision"))
+
+rec_5 <- recall_stats_hsp[recall_stats_hsp$quantile == 0.05, ] %>%
+  select(c("cancer_type", "agg_level","mean_recall", "mean_lift_recall", "ci_lower_lift_recall",
+           "ci_upper_lift_recall",  "mean_precision","mean_lift_precision", "ci_lower_lift_precision", 
+           "ci_upper_lift_precision")) %>%
+  setNames(c("Cancer type",		"Labeling type", "Mean recall",	"Mean lift of recall",
+  "Lower bound of confidence interval for mean lift of recall",	"Upper bound of confidence interval for mean  lift of recall",
+  "Mean precision",	"Mean lift of precision",	"Lower bound of confidence interval for mean lift of precision",
+  "Upper bound of confidence interval for mean  lift of precision"))
+
+q3 <- roc %>%
+  inner_join(
+    rec_3, by=c("Cancer type","Labeling type")
+  )
+q5 <- roc %>%
+  inner_join(
+    rec_5, by=c("Cancer type", "Labeling type")
+  )
+
+# save
+
+# wb <- createWorkbook()
+# addWorksheet(wb, "q3")
+# addWorksheet(wb, "q5")
+
+# writeData(wb, sheet="q3", q3)
+# writeData(wb, sheet="q5", q5)
+
+# saveWorkbook(wb, "../paper_materials/table7_new.xlsx", overwrite = T)
+
+```

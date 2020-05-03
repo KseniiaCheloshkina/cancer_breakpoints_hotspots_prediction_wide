@@ -17,7 +17,7 @@ library(reshape2)
 
 library(formattable)
 library(openxlsx)
-
+source("../run/tools.R")
 pal <- wes_palette("Zissou1", 100, type = "continuous")
 
 win_len <- 100000
@@ -155,19 +155,11 @@ recall_data_cur <- recall_data_all[recall_data_all$type != "hsp_vs_bkpt",]
 
 
 g1 <- ggplot(roc_auc_data_cur, aes(x=agg_level, y=te_auc, fill=agg_level)) + 
-  geom_boxplot() + 
-  scale_fill_jco() + 
+  geom_boxplot() +
   facet_wrap(~ cancer_type, nrow=1) + 
-  xlab("Hotspots labeling threshold") + 
+  xlab("Labeling type") + 
   ylab("ROC AUC") +
-  theme(
-    text = element_text(size = 8, family = "arial"),
-    axis.title.x = element_text(size = 10),
-    axis.title.y = element_text(size = 10),
-    axis.text.x = element_text(hjust = 1),
-    axis.text.y = element_text(hjust = 1),
-    legend.position="none", legend.title = element_text(size = 10),
-    ) + 
+  theme_light_custom()+
   labs(fill = "Threshold")
 g1
 ```
@@ -186,18 +178,10 @@ g2 <- ggplot(recall_data_cur %>%
   aes(x=agg_level, fill=agg_level, y=lift_recall)) + 
   geom_boxplot() + 
   facet_grid(quantile ~ cancer_type, scales = "free_y") + 
-  scale_fill_jco() + 
-  xlab("Hotspots labeling threshold") + 
+  xlab("Labeling type") + 
   ylab("Lift of recall") +
-  theme(
-    text = element_text(size = 8, family = "arial"),
-    axis.title.x = element_text(size = 10),
-    axis.title.y = element_text(size = 10),
-    axis.text.x = element_text(hjust = 1),
-    axis.text.y = element_text(hjust = 1),
-    legend.position="bottom", legend.title = element_text(size = 10),
-    ) + 
-  labs(fill = "Threshold")
+  labs(fill = "Threshold")+
+  theme_light_custom()
 g2
 ```
 
@@ -285,20 +269,12 @@ roc_auc_data_base_all$agg_level[roc_auc_data_base_all$agg_level == "all"] <- "br
 g3 <- ggplot(roc_auc_data_base_all, aes(x=agg_level, y=te_auc, fill=type1)) + 
   geom_boxplot() + 
   facet_wrap(~ cancer_type, ncol=2, scales="free_y") + 
-  scale_fill_jco()+
   xlab("Hotspots labeling threshold") + 
   ylab("ROC AUC") +
-  theme(
-    text = element_text(size = 8, family = "arial"),
-    axis.title.x = element_text(size = 10),
-    axis.title.y = element_text(size = 10),
-    axis.text.x = element_text(hjust = 1),
-    axis.text.y = element_text(hjust = 1),
-    legend.position="bottom", legend.title = element_text(size = 10),
-    ) + 
+  theme_light_custom() + 
   labs(fill = "Model type")
 
-ggsave(filename = "Fig6.tiff", plot = g3, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 5, height = 3, scale = 2, compression = "lzw")
+# ggsave(filename = "Fig6.tiff", plot = g3, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 5, height = 3, scale = 2, compression = "lzw")
 g3
 ```
 
@@ -408,6 +384,47 @@ ggplot(recall_data_base_all %>%
 Lift of precision не очень корректно анализировать, так как для blood, bone, brain в обучающей выборке для моделей предсказания хотспотов против разрывов всего лишь 1500-2500 наблюдения, в то время как в остальных типах рака в 10-100 раз больше. 
 
 
+
+```{r fig.width=10}
+recall_data_base_all$type1[recall_data_base_all$type == "bkpt"] <- 'breakpoints vs all'
+recall_data_base_all$type1[recall_data_base_all$type == 'base'] <- 'hotspots vs all'
+recall_data_base_all$type1[recall_data_base_all$type == 'hsp_vs_bkpt'] <- 'hotspots vs breakpoints'
+recall_data_base_all$agg_level[recall_data_base_all$agg_level == "all"] <- "breakpoints" 
+
+g4 <- ggplot(recall_data_base_all %>%
+  filter(
+    quantile %in% c(0.03, 0.05,0.1)
+    ), 
+  aes(x=agg_level, fill=type1, y=lift_recall)) + 
+  geom_boxplot() + 
+  facet_grid(quantile ~ cancer_type, scales = "free_y") + 
+  theme_light_custom() + 
+  labs(fill = "Model type")+
+  xlab("Labeling type") + 
+  ylab("Lift of recall")
+g4
+```
+
+
+```{r}
+g3 <- ggplot(roc_auc_data_base_all, aes(x=agg_level, y=te_auc, fill=type1)) + 
+  geom_boxplot() + 
+  facet_wrap(~ cancer_type, nrow=1, scales="free_y") + 
+  xlab("Labeling type") + 
+  ylab("ROC AUC") +
+  theme_light_custom() + 
+  labs(fill = "Model type")
+
+g_f <- ggarrange(g3, g4,  
+          labels = c("A", "B"),
+          ncol = 1, nrow = 2, heights = c(1, 3),
+          font.label = list(size = 10, color = "black", face ="bold"))
+g_f
+# ggsave(filename = "Fig6.tiff", plot = g_f, device = "tiff", path = "../paper_materials/supplemental/", dpi = 600, units = "in", width = 7, height = 5, scale = 2, compression = "lzw")
+```
+
+
+
 Нагляднее всего различия в lift of recall заметны присравнении точечных оценок, а не распределений, поэтому рассчитаем медиану и доверительный интервал для среднего lift of recall для всех типов моделей.
 
 
@@ -423,7 +440,7 @@ rec_stats <- recall_data_base_all %>%
   group_by(
     cancer_type,
     agg_level,
-    type,
+    type1,
     quantile
   ) %>%
   summarize(
@@ -437,29 +454,29 @@ rec_stats <- recall_data_base_all %>%
   )
   
 rec_stats_bkpt <- rec_stats %>%
-  filter(agg_level == "all") %>%
+  filter(agg_level == "breakpoints") %>%
   ungroup() %>%
   select(cancer_type, quantile, median_lift_recall) %>%
   rename("bkpt" = "median_lift_recall")
 
 rec_stats_all <- rec_stats %>%
-  filter(agg_level != "all") %>%
+  filter(agg_level != "breakpoints") %>%
   select(
     cancer_type, 
     agg_level,
-    type,
+    type1,
     quantile,
     ci_lower_lift_recall
     ) %>%
-  dcast(cancer_type + agg_level + quantile ~ type, value.var = "ci_lower_lift_recall")
+  dcast(cancer_type + agg_level + quantile ~ type1, value.var = "ci_lower_lift_recall")
 
 rec_stats_all <- rec_stats_all %>%
   inner_join(
-    rec_stats_bkpt, by=c("cancer_type","quantile")) %>%
+    rec_stats_bkpt, by=c("cancer_type", "quantile")) %>%
   mutate(
-    ratio_hsp_to_bkpt =  base / bkpt,
-    ratio_hspvsbkpt_to_bkpt =  hsp_vs_bkpt / bkpt,
-    ratio_hsp_to_hspvsbkpt =  base/ hsp_vs_bkpt
+    ratio_hsp_to_bkpt =  `hotspots vs all` / bkpt,
+    ratio_hspvsbkpt_to_bkpt =  `hotspots vs breakpoints` / bkpt,
+    ratio_hsp_to_hspvsbkpt =  `hotspots vs all`/ `hotspots vs breakpoints`
   )
 
 lev_cancer_types <- c("pancreatic", "breast", "prostate","ovary", "uterus", "skin","liver", "blood", "bone", "brain")
@@ -471,15 +488,9 @@ g4 <- ggplot(rec_stats_all, aes(x=as.character(quantile), y=cancer_type, fill=ra
   scale_fill_gradientn(colours = pal)+
   xlab("Probability percentile") + 
   ylab("Cancer type") +
+  theme_light_custom(scale_fill = F)+
   theme(
-    text = element_text(size = 8, family = "arial"),
-    axis.title.x = element_text(size = 10),
-    axis.title.y = element_text(size = 10),
-    axis.text.x = element_text(hjust = 1),
-    axis.text.y = element_text(hjust = 1),
-    legend.title = element_text(size = 10),
-    strip.placement = "outside",
-    legend.position="bottom"
+    strip.placement = "outside"
     ) + 
   labs(fill = "Ratio")
 g4
@@ -497,20 +508,14 @@ g4
 rec_stats_all$ratio_hsp_to_hspvsbkpt_bucket <- rec_stats_all$ratio_hsp_to_hspvsbkpt 
 rec_stats_all$ratio_hsp_to_hspvsbkpt_bucket[rec_stats_all$ratio_hsp_to_hspvsbkpt < 0.85] <- 0.5
 rec_stats_all$ratio_hsp_to_hspvsbkpt_bucket[rec_stats_all$ratio_hsp_to_hspvsbkpt > 3] <- 3
-g5<- ggplot(rec_stats_all, aes(x=as.character(quantile), y=cancer_type, fill=ratio_hsp_to_hspvsbkpt_bucket)) + 
+g5 <- ggplot(rec_stats_all, aes(x=as.character(quantile), y=cancer_type, fill=ratio_hsp_to_hspvsbkpt_bucket)) + 
   geom_tile() + 
   facet_grid(~agg_level, switch = "x")+ 
   scale_fill_gradientn(colours = pal)+
   xlab("Probability percentile") + 
   ylab("Cancer type") +
+  theme_light_custom(scale_fill = F)+
   theme(
-    text = element_text(size = 8, family = "arial"),
-    axis.title.x = element_text(size = 10),
-    axis.title.y = element_text(size = 10),
-    axis.text.x = element_text(hjust = 1),
-    axis.text.y = element_text(hjust = 1),
-    legend.title = element_text(size = 10),
-    legend.position="bottom",
     strip.placement = "outside"
     ) + 
   labs(fill = "Ratio")
@@ -549,17 +554,15 @@ g_f <- ggarrange(g1, g2,
           labels = c("A", "B"),
           ncol = 1, nrow = 2, heights = c(1, 3),
           font.label = list(size = 10, color = "black", face ="bold"))
-
-# ggsave(filename = "Fig5.tiff", plot = g_f, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 7, height = 5, scale = 2, compression = "lzw")
+g_f
+# ggsave(filename = "Fig5.tiff", plot = g_f, device = "tiff", path = "../paper_materials/supplemental/", dpi = 600, units = "in", width = 7, height = 5, scale = 2, compression = "lzw")
 
 g_f1 <- ggarrange(g4, g5,  
           labels = c("A", "B"),
           ncol = 2, nrow = 1, 
           font.label = list(size = 10, color = "black", face ="bold"))
 
-# ggsave(filename = "Fig7a.tiff", plot = g_f1, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 6, height = 5, scale = 2, compression = "lzw")
-
-
+# ggsave(filename = "Fig7.tiff", plot = g_f1, device = "tiff", path = "../paper_materials/supplemental/", dpi = 600, units = "in", width = 6, height = 5, scale = 2, compression = "lzw")
 ```
 
 Tables for report:

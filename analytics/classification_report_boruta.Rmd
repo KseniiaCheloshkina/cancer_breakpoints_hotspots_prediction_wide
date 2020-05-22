@@ -226,11 +226,27 @@ roc_med
 ```
 
 
-
 ```{r}
-roc_med_pl <- melt(roc_med,id.vars = c("cancer_type", "agg_level"))
+roc_med_pl <- melt(roc_med, id.vars = c("cancer_type", "agg_level"))
 roc_med_pl$variable_new <- gsub(x = roc_med_pl$variable, pattern = "median_test_auc_", replacement = "")
 ggplot(roc_med_pl, aes(x=cancer_type, y=value, fill=variable_new)) + 
+  geom_bar(stat='identity',  color="black", position = "dodge") +
+  scale_fill_jco()
+```
+
+Mean ROC AUC
+
+```{r}
+roc_mean <- roc_data_base %>% 
+  select(cancer_type, agg_level, mean_test_auc) %>%
+  setNames(c("cancer_type", "agg_level", "mean_test_auc_base")) %>%
+  inner_join(
+    roc_data %>%
+      select(cancer_type, agg_level, median_test_auc) %>%
+      setNames(c("cancer_type", "agg_level", "mean_test_auc_reduced")), by=c('cancer_type', 'agg_level'))
+roc_mean_pl <- melt(roc_mean, id.vars = c("cancer_type", "agg_level"))
+roc_mean_pl$variable_new <- gsub(x = roc_mean_pl$variable, pattern = "mean_test_auc_", replacement = "")
+ggplot(roc_mean_pl, aes(x=cancer_type, y=value, fill=variable_new)) + 
   geom_bar(stat='identity',  color="black", position = "dodge") +
   scale_fill_jco()
 ```
@@ -316,14 +332,20 @@ ggplot(comp_rec_pl, aes(x=cancer_type, y=value, fill=variable_new)) +
   scale_fill_jco()
 ```
 ```{r}
-comp_rec_pl$variable_type[comp_rec_pl$variable_type == 'recall'] <- 'lift_recall'
-comp_rec_pl$variable_type[comp_rec_pl$variable_type == 'precision'] <- 'lift_precision'
-g_boruta <- ggplot(comp_rec_pl, aes(x=cancer_type, y=value, fill=variable_new)) + 
+comp_rec_pl$variable_type[comp_rec_pl$variable_type == 'recall'] <- 'Lift of recall'
+for_plot <- comp_rec_pl[comp_rec_pl$variable_type == 'Lift of recall', ]
+roc_mean_pl$variable_type <- 'ROC AUC'
+for_plot_final <- rbind.data.frame(
+  roc_mean_pl %>% select(cancer_type, value, variable_type, variable_new),
+  for_plot %>% select(cancer_type, value, variable_type, variable_new)
+)
+
+g_boruta <- ggplot(for_plot_final, aes(x=cancer_type, y=value, fill=variable_new)) + 
   geom_bar(stat='identity',  color="black", position = "dodge") +
-  facet_wrap(~variable_type,nrow = 2) + 
+  facet_wrap(~variable_type, nrow = 2, scales = "free_y") + 
   theme_light_custom()+
   xlab("Cancer type") + 
-  ylab("value") +
+  ylab("Mean value") +
   labs(fill = "Feature set")
 g_boruta
 

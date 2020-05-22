@@ -35,15 +35,15 @@ data <- read.csv(
 
 ## load best features data
 # for boruta
-best_features <- read.xlsx("data/output/boruta_stats.xlsx", sheet = "hotspots_features")
-best_features <- best_features[best_features$boruta_selected == 1, 
-                                       c("cancer_type", "feature")]
+# best_features <- read.xlsx("data/output/boruta_stats.xlsx", sheet = "hotspots_features")
+# best_features <- best_features[best_features$boruta_selected == 1, 
+#                                        c("cancer_type", "feature")]
 # for boruta plus additional significant
-# best_features <- read.xlsx("data/output/boruta_plus_sign_stats.xlsx", sheet = "hotspots_features")
+best_features <- read.xlsx("data/output/boruta_plus_sign_stats.xlsx", sheet = "hotspots_features")
 
 
-output_path <- "data/output/classifier_results_best_features/"
-# output_path <- "data/output/classifier_results_best_features_boruta_sign/" 
+# output_path <- "data/output/classifier_results_best_features/"
+output_path <- "data/output/classifier_results_best_features_boruta_sign_all_agg_levels/"
 
 
 
@@ -105,10 +105,7 @@ if (!is.null(excl_lev_current)){
 }
 
 
-# only best labeling type for hotspots
-best_lev <- read.csv("data/output/best_lev.csv", row.names = 1)
 hsp_cols <- hsp_cols[-grep(x = hsp_cols, pattern = "all")]
-# hsp_cols <- c("hsp_99.5._breast")
 
 # train/test split
 train_ratio <- 0.7
@@ -133,114 +130,106 @@ for (target_column in hsp_cols){
   
   cancer_type <- strsplit(target_column, "_")[[1]][3]
   agg_level <- strsplit(target_column, "_")[[1]][2]
-  
-  is_best <- best_lev %>%
-    inner_join(
-      data.frame("cancer_type" = cancer_type, "agg_level" = agg_level),
-      by=c("cancer_type","agg_level")
-    ) %>% nrow()
-  
-  if (is_best == 1){
-    
-    all_features_cols <- c(all_conserved_feats, grep(x = all_tissue_spec_feats,
-                                                     pattern = cancer_type, value = TRUE))
-    
-    # select best features
-    features_nm <- best_features[(best_features$cancer_type == cancer_type), "feature"]
-    
-    # models parameters
-    trCtrl <- trainControl(
-      method="none",
-      verboseIter = TRUE,
-      classProbs=TRUE,
-      summaryFunction = twoClassSummary,
-      seeds = seq(1, n_repeats),
-      allowParallel = TRUE
-      )
-    # set "seeds" parameters to make results reproducible
-    if (length(features_nm) < 5){
-      mtryGrid <- expand.grid(mtry = length(features_nm))
-    } else {
-      mtryGrid <- expand.grid(mtry = 5)
-    }
-    
-    
-    repeats_res <- foreach(i=seq(1, n_repeats)) %dopar% {
-  
-      # train/test split
-      splitted_dataset <- get_train_test_split(data=all_data, target_col=target_column, 
-                                               start_pos_col="from",
-                                               chr_col="chr", feature_cols=features_nm,
-                                               train_ratio=train_ratio, 
-                                               seed=i)
-      x_train <- splitted_dataset[["x_train"]]
-      y_train <- splitted_dataset[["y_train"]]
-      x_test <- splitted_dataset[["x_test"]] 
-      y_test <- splitted_dataset[["y_test"]]  
-      
-      n_pos <- length(y_train[y_train == "X1"])
-      n_neg <- length(y_train[y_train == "X0"])
 
-      # fit models
-      model <- rf_fit(x_train = x_train[features_nm], y_train = y_train, trCtrl = trCtrl,
-                      n_pos = n_pos, n_neg = n_neg, mtryGrid = mtryGrid)
-      
-      # prediction
-      train_pred <- predict(model, newdata = x_train[features_nm], type = "prob")
-      test_pred <- predict(model, newdata = x_test[features_nm], type = "prob")
-      train_pred$target <- y_train
-      test_pred$target <- y_test
-      
-      # model quality
-      model_qual <- get_model_quality(train_pred, test_pred, model, recall_quantiles)
-      
-      return(model_qual)
-    }
+  all_features_cols <- c(all_conserved_feats, grep(x = all_tissue_spec_feats,
+                                                   pattern = cancer_type, value = TRUE))
+  
+  # select best features
+  features_nm <- best_features[(best_features$cancer_type == cancer_type), "feature"]
+  
+  # models parameters
+  trCtrl <- trainControl(
+    method="none",
+    verboseIter = TRUE,
+    classProbs=TRUE,
+    summaryFunction = twoClassSummary,
+    seeds = seq(1, n_repeats),
+    allowParallel = TRUE
+    )
+  # set "seeds" parameters to make results reproducible
+  if (length(features_nm) < 5){
+    mtryGrid <- expand.grid(mtry = length(features_nm))
+  } else {
+    mtryGrid <- expand.grid(mtry = 5)
+  }
+  
+  
+  repeats_res <- foreach(i=seq(1, n_repeats)) %dopar% {
+
+    # train/test split
+    splitted_dataset <- get_train_test_split(data=all_data, target_col=target_column, 
+                                             start_pos_col="from",
+                                             chr_col="chr", feature_cols=features_nm,
+                                             train_ratio=train_ratio, 
+                                             seed=i)
+    x_train <- splitted_dataset[["x_train"]]
+    y_train <- splitted_dataset[["y_train"]]
+    x_test <- splitted_dataset[["x_test"]] 
+    y_test <- splitted_dataset[["y_test"]]  
     
+    n_pos <- length(y_train[y_train == "X1"])
+    n_neg <- length(y_train[y_train == "X0"])
+
+    # fit models
+    model <- rf_fit(x_train = x_train[features_nm], y_train = y_train, trCtrl = trCtrl,
+                    n_pos = n_pos, n_neg = n_neg, mtryGrid = mtryGrid)
     
-    # save results
-    for (split_iter in 1:length(repeats_res)){
-      
-      res_iter <- repeats_res[[split_iter]]
-  
-      # extract specific datasets
-      df_roc_auc <- res_iter[['roc_auc']]
-      df_imp <- res_iter[['importance']]
-      df_recall <- res_iter[['recall']]
-  
-      # add general info
-      df_roc_auc <- df_roc_auc %>%
-        mutate(
-          iter = split_iter,
-          cancer_type = cancer_type,
-          agg_level = agg_level,
-          win_len = format(win_len, scientific = F)
-        )
-  
-      df_imp <- df_imp %>%
-        mutate(
-          iter = split_iter,
-          cancer_type = cancer_type,
-          agg_level = agg_level,
-          win_len = format(win_len, scientific = F)
-        )
-  
-      df_recall <- df_recall %>%
-        mutate(
-          iter = split_iter,
-          cancer_type = cancer_type,
-          agg_level = agg_level,
-          win_len = format(win_len, scientific = F)
-        )
-  
-      df_roc_auc_all <- rbind(df_roc_auc_all, df_roc_auc)
-      df_imp_all <- rbind(df_imp_all, df_imp)
-      df_recall_all <- rbind(df_recall_all, df_recall)
-    }
+    # prediction
+    train_pred <- predict(model, newdata = x_train[features_nm], type = "prob")
+    test_pred <- predict(model, newdata = x_test[features_nm], type = "prob")
+    train_pred$target <- y_train
+    test_pred$target <- y_test
     
-    write.csv(df_roc_auc_all, file = paste0(output_path, "result_roc_auc_", format(win_len, scientific = F), ".csv"))
-    write.csv(df_imp_all, file = paste0(output_path, "result_imp_", format(win_len, scientific = F), ".csv"))
-    write.csv(df_recall_all, file = paste0(output_path, "result_recall_", format(win_len, scientific = F), ".csv"))
-  }  
+    # model quality
+    model_qual <- get_model_quality(train_pred, test_pred, model, recall_quantiles)
+    
+    return(model_qual)
+  }
+  
+  
+  # save results
+  for (split_iter in 1:length(repeats_res)){
+    
+    res_iter <- repeats_res[[split_iter]]
+
+    # extract specific datasets
+    df_roc_auc <- res_iter[['roc_auc']]
+    df_imp <- res_iter[['importance']]
+    df_recall <- res_iter[['recall']]
+
+    # add general info
+    df_roc_auc <- df_roc_auc %>%
+      mutate(
+        iter = split_iter,
+        cancer_type = cancer_type,
+        agg_level = agg_level,
+        win_len = format(win_len, scientific = F)
+      )
+
+    df_imp <- df_imp %>%
+      mutate(
+        iter = split_iter,
+        cancer_type = cancer_type,
+        agg_level = agg_level,
+        win_len = format(win_len, scientific = F)
+      )
+
+    df_recall <- df_recall %>%
+      mutate(
+        iter = split_iter,
+        cancer_type = cancer_type,
+        agg_level = agg_level,
+        win_len = format(win_len, scientific = F)
+      )
+
+    df_roc_auc_all <- rbind(df_roc_auc_all, df_roc_auc)
+    df_imp_all <- rbind(df_imp_all, df_imp)
+    df_recall_all <- rbind(df_recall_all, df_recall)
+  }
+  
+  write.csv(df_roc_auc_all, file = paste0(output_path, "result_roc_auc_", format(win_len, scientific = F), ".csv"))
+  write.csv(df_imp_all, file = paste0(output_path, "result_imp_", format(win_len, scientific = F), ".csv"))
+  write.csv(df_recall_all, file = paste0(output_path, "result_recall_", format(win_len, scientific = F), ".csv"))
+  
   pb$tick()
 }

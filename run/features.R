@@ -154,6 +154,7 @@ get_feature_df <- function(features_cols){
       all_chromatin <- c(all_chromatin, grep(x = feat, pattern = col, value = TRUE))  
     }
   }
+  all_chromatin_clean <- c("DNase_seq")
   
   methyl <- c("cancer_brain_DNA_methylation", "cancer_breast_DNA_methylation",
               "cancer_liver_DNA_methylation",
@@ -164,6 +165,7 @@ get_feature_df <- function(features_cols){
       all_methyl <- c(all_methyl, grep(x = feat, pattern = col, value = TRUE))  
     }
   }
+  all_methyl_clean <- c("DNA_methylation")
   
   histones <- c( "cancer_liver_H3K27ac.human", "cancer_uterus_H3K27ac.human", "cancer_blood_H3K27ac.human",
                  "cancer_brain_H3K27ac.human","cancer_blood_H3K27me3.human","cancer_brain_H3K27me3.human",    
@@ -179,6 +181,16 @@ get_feature_df <- function(features_cols){
       all_histones <- c(all_histones, grep(x = feat, pattern = col, value = TRUE))  
     }
   }
+  all_histones_clean <- vector()
+  for (col in all_histones){
+    p <- strsplit(col, "_")[[1]]
+    if (p[[1]] == "upper"){
+      new_col <- paste0("upper_", gsub(x = p[[4]], pattern = ".human", replacement = ""))
+    } else {
+      new_col <- gsub(x = p[[3]], pattern = ".human", replacement = "")
+    }
+    all_histones_clean <- c(all_histones_clean, new_col)
+  }
   
   tf <- c("cancer_liver_ATF3.human", "cancer_liver_CTCF.human",
           "cancer_liver_EGR1.human", "cancer_liver_FOXA1.human", "cancer_liver_FOXA2.human", 
@@ -192,6 +204,16 @@ get_feature_df <- function(features_cols){
       all_tf <- c(all_tf, grep(x = feat, pattern = col, value = TRUE))  
     }
   }
+  all_tf_clean <- vector()
+  for (col in all_tf){
+    p <- strsplit(col, "_")[[1]]
+    if (p[[1]] == "upper"){
+      new_col <- paste0("upper_", gsub(x = p[[4]], pattern = ".human", replacement = ""))
+    } else {
+      new_col <- gsub(x = p[[3]], pattern = ".human", replacement = "")
+    }
+    all_tf_clean <- c(all_tf_clean, new_col)
+  }
   
   feat_group_df <- data.frame()
   if (length(all_tf) > 0){
@@ -199,7 +221,8 @@ get_feature_df <- function(features_cols){
       feat_group_df,
       data.frame(
         feature_group=c("tf"),
-        feature=all_tf
+        feature=all_tf,
+        features_clean=all_tf_clean
       )
     )
   }
@@ -209,7 +232,8 @@ get_feature_df <- function(features_cols){
       feat_group_df,
       data.frame(
         feature_group=c("histones"),
-        feature=all_histones
+        feature=all_histones,
+        features_clean=all_histones_clean
       )
     )
   }    
@@ -218,7 +242,8 @@ get_feature_df <- function(features_cols){
       feat_group_df,
       data.frame(
         feature_group=c("methyl"),
-        feature=all_methyl
+        feature=all_methyl,
+        features_clean=all_methyl_clean
       )
     )
   } 
@@ -227,7 +252,8 @@ get_feature_df <- function(features_cols){
       feat_group_df,
       data.frame(
         feature_group=c("chromatin"),
-        feature=all_chromatin
+        feature=all_chromatin,
+        features_clean=all_chromatin_clean
       )
     )
   } 
@@ -236,7 +262,8 @@ get_feature_df <- function(features_cols){
       feat_group_df,
       data.frame(
         feature_group=c("tad"),
-        feature=all_tad
+        feature=all_tad,
+        features_clean=all_tad
       )
     )
   } 
@@ -245,7 +272,8 @@ get_feature_df <- function(features_cols){
       feat_group_df,
       data.frame(
         feature_group=c("reg"),
-        feature=all_reg
+        feature=all_reg,
+        feature_clean=all_reg
       )
     )
   } 
@@ -254,7 +282,8 @@ get_feature_df <- function(features_cols){
       feat_group_df,
       data.frame(
         feature_group=c("sec_str"),
-        feature=all_sec_str
+        feature=all_sec_str,
+        feature_clean=all_sec_str
       )
     )
   } 

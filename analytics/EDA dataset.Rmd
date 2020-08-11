@@ -241,7 +241,7 @@ g1 <- ggplot(melted_cormat, aes(reorder(Var2, var2_r), reorder(Var1, -var1_r), f
   ylab("Feature") +
   theme_minimal()+ # minimal theme
   theme(
-    text = element_text(size = 8, family = "arial"),
+    text = element_text(size = 9, family = "arial"),
     axis.title.x = element_text(size = 10),
     axis.title.y = element_text(size = 10),
     axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
@@ -251,7 +251,7 @@ g1 <- ggplot(melted_cormat, aes(reorder(Var2, var2_r), reorder(Var1, -var1_r), f
   scale_fill_gradientn(colours = pal) 
 
 g1
-# ggsave(filename = "Fig01.tiff", plot = g1, device = "tiff", path = "../paper_materials/supplementary figures/",
+# ggsave(filename = "Fig01_supp.tiff", plot = g1, device = "tiff", path = "../paper_materials/plots_after_review/",
 #        dpi = 600, units = "in", width = 6, height = 5, scale = 2, compression = "lzw")
 
 ```
@@ -612,7 +612,7 @@ hs_q %>%
 ```
 
 
-
+### Plot densities
 
 
 ```{r fig.height=7, fig.width=10}
@@ -660,8 +660,8 @@ df_f <- get_feature_df(names(all_data))
 
 ```{r}
 chr_cols <- as.character(df_f[df_f$feature_group == "chromatin", "feature"])
-upper_chr_cols <- paste0("upper_", chr_cols)
-melted <- melt(data = all_data[c("chr", "from_mb", as.character(chr_cols), as.character(upper_chr_cols))], id.vars = c("chr", "from_mb"))
+# upper_chr_cols <- paste0("upper_", chr_cols)
+melted <- melt(data = all_data[c("chr", "from_mb", as.character(chr_cols))], id.vars = c("chr", "from_mb"))
 
 melted$cancer <-  gsub(
   x = gsub(
@@ -1087,8 +1087,8 @@ g1 <- ggplot(
   xlab("Position, Mb") + 
   labs(color="Feature") +
   ylab("Coverage")
-
-# ggsave(filename = "F_imp2a.tiff", plot = g1, device = "tiff", path = "../paper_materials/supplementary figures/", dpi = 600, units = "in", width = 6, height = 3, scale = 2, compression = "lzw")
+g1
+# ggsave(filename = "Fig4A_supp.tiff", plot = g1, device = "tiff", path = "../paper_materials/plots_after_review/", dpi = 600, units = "in", width = 6, height = 5, scale = 2, compression = "lzw")
 ```
 
 ```{r fig.height=10, fig.width=8}
@@ -1108,7 +1108,7 @@ g2 <- ggplot(
   labs(color="Feature") +
   ylab("Coverage")
 
-# ggsave(filename = "F_imp3.tiff", plot = g2, device = "tiff", path = "../paper_materials/supplementary figures/", dpi = 600, units = "in", width = 6, height = 5, scale = 2, compression = "lzw")
+# ggsave(filename = "Fig4B_supp.tiff", plot = g2, device = "tiff", path = "../paper_materials/plots_after_review/", dpi = 600, units = "in", width = 6, height = 5, scale = 2, compression = "lzw")
 ```
 
 

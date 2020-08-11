@@ -284,7 +284,7 @@ g1 <- ggplot(df_hits_last_iter_agg1, aes(x=cancer_type, y=reorder(feature_new, -
   ylab("Feature")+
   labs(fill="Number of datasets")
 g1
-# ggsave(filename = "Fig17.tiff", plot = g1, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 4, height = 5, scale = 2, compression = "lzw")
+# ggsave(filename = "Fig6_supp.tiff", plot = g1, device = "tiff", path = "../paper_materials/plots_after_review/", dpi = 600, units = "in", width = 4, height = 5, scale = 2, compression = "lzw")
 ```
 
 
@@ -302,9 +302,6 @@ g1 <- ggplot(df_hits_last_iter_agg, aes(x=cancer_type, y=feature,fill=n_best)) +
     ) + 
   labs(fill = "Number of \nexecutions")
 g1
-
-# ggsave(filename = "Fig3.tiff", plot = g1, device = "tiff", path = "../paper_materials/supplementary figures/",
-#        dpi = 600, units = "in", width = 4, height = 5, scale = 2, compression = "lzw")
 ```
 
 
@@ -439,7 +436,7 @@ g2 <- ggplot(by_f[by_f$total_sets >= 300, ], aes(x=reorder(new_feature, total_se
   xlab("Feature")+
   labs(fill='Feature group')
 
-# ggsave(filename = "Fig19_sum.tiff", plot = g2, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 5, height = 3, scale = 2.2, compression = "lzw")
+# ggsave(filename = "Fig7_supp.tiff", plot = g2, device = "tiff", path = "../paper_materials/plots_after_review/", dpi = 600, units = "in", width = 5, height = 3, scale = 2.2, compression = "lzw")
 g2
 ```
 
@@ -505,7 +502,7 @@ by_f_canc_agg$new_feature[by_f_canc_agg$feature_group == "tf"] <- gsub(x = by_f_
 by_f_canc_agg$new_feature[by_f_canc_agg$feature_group == "tf"] <- gsub(x = by_f_canc_agg$new_feature[by_f_canc_agg$feature_group == "tf"], pattern = ".human", "")
 
 by_f_canc <- by_f_canc %>%
-  inner_join(df_feat_proper, by=c("new_feature"="feature")) %>%
+  inner_join(df_feat_proper %>% select(-feature_group), by=c("new_feature"="feature")) %>% 
   inner_join(proper_feature_group_names, by=c("feature_group"="feature_group_name"))
 
 by_f_canc$new_feature[by_f_canc$feature_group == "tf"] <- gsub(x = by_f_canc$new_feature[by_f_canc$feature_group == "tf"], pattern = "cancer_liver_", "")
@@ -532,7 +529,8 @@ g3
 ```{r}
 best_f <- by_f_canc_agg %>%
   ungroup() %>%
-  arrange(desc(med_sets)) %>%
+  # arrange(desc(med_sets)) %>%
+  arrange(desc(mean_sets)) %>%
   filter(row_number() <= 8) %>%
   select(new_feature) %>%
   as.vector()
@@ -551,7 +549,7 @@ g1 <- ggplot(by_f_canc_plot, aes(x=variable, y=total_sets, color=new_feature, gr
   ylab("Total number of datasets")+
   labs(color="Feature")
 g1
-# ggsave(filename = "Fig15_med.tiff", plot = g1, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 5, height = 3, scale = 2.2, compression = "lzw")
+# ggsave(filename = "Fig8_supp.tiff", plot = g1, device = "tiff", path = "../paper_materials/plots_after_review/", dpi = 600, units = "in", width = 5, height = 3, scale = 2.2, compression = "lzw")
 ```
 
 ```{r}
@@ -594,7 +592,7 @@ g1 <- ggplot(by_f_canc_plot, aes(x=variable, y=total_sets, color=new_feature, gr
   ylab("Total number of datasets")+
   labs(color="Feature")
 g1
-# ggsave(filename = "Fig15_sum.tiff", plot = g1, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 5, height = 3, scale = 2.2, compression = "lzw")
+# ggsave(filename = "Fig8_supp.tiff", plot = g1, device = "tiff", path = "../paper_materials/plots_after_review/", dpi = 600, units = "in", width = 5, height = 3, scale = 2.2, compression = "lzw")
 ```
 
 

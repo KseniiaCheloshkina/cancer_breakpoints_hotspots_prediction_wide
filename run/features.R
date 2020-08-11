@@ -267,13 +267,14 @@ get_feature_df <- function(features_cols){
       )
     )
   } 
+  
   if (length(all_reg) > 0){
     feat_group_df <- rbind(
       feat_group_df,
       data.frame(
         feature_group=c("reg"),
         feature=all_reg,
-        feature_clean=all_reg
+        features_clean=all_reg
       )
     )
   } 
@@ -283,7 +284,7 @@ get_feature_df <- function(features_cols){
       data.frame(
         feature_group=c("sec_str"),
         feature=all_sec_str,
-        feature_clean=all_sec_str
+        features_clean=all_sec_str
       )
     )
   } 

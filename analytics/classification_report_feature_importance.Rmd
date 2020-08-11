@@ -567,8 +567,8 @@ ggplot(data_plot, aes(x=feat_group, y=value, fill=feat_group)) +
 
 Добавляем в paper tables по одному столбцу: для каждого типа рака фиксируем уровень агрегации, при котором для какой-то группы признаков достигается максимальный median lift of recall, далее для каждого типа рака находится median test ROC AUC, соответствующий выбранному уровню агрегации и группе признаков. 
 ```{r}
-paper_table1 <- read.xlsx("../paper_materials/Tables.xlsx", sheet = "Table 1")
-paper_table2 <- read.xlsx("../paper_materials/Tables.xlsx", sheet = "Table 2")
+# paper_table1 <- read.xlsx("../paper_materials/Tables.xlsx", sheet = "Table 1")
+# paper_table2 <- read.xlsx("../paper_materials/Tables.xlsx", sheet = "Table 2")
 
 res <- recall_data %>%
   filter(quantile == 0.03) %>%
@@ -604,12 +604,12 @@ paper_table2 <- paper_table2 %>%
   inner_join(
     res_rec, by=c("Cancer.type")
   )
-wb <- createWorkbook()
-addWorksheet(wb, "Table 1")
-addWorksheet(wb, "Table 2")
-
-writeData(wb, sheet="Table 1", paper_table1)
-writeData(wb, sheet="Table 2", paper_table2)
+# wb <- createWorkbook()
+# addWorksheet(wb, "Table 1")
+# addWorksheet(wb, "Table 2")
+# 
+# writeData(wb, sheet="Table 1", paper_table1)
+# writeData(wb, sheet="Table 2", paper_table2)
 
 # saveWorkbook(wb, "../paper_materials/Tables.xlsx", overwrite = T)
 ```
@@ -682,6 +682,34 @@ pl_values <- pl_values%>%
     by=c("metric", "cancer_type", "agg_level", "feature_group_name_proper"))
 
 
+agg_lev <- "99."
+
+g1 <- ggplot(pl_values[pl_values$agg_level == agg_lev, ], 
+       aes(x=r, y=value, fill=reorder(feature_group_name_proper, r))) + 
+  geom_boxplot() +
+  facet_grid(metric~cancer_type, scales="free")+
+  # theme_light_custom()
+  theme_light()+
+  xlab("Feature group")+
+  ylab("Metric value") +
+  labs(fill = "Feature group")+
+  scale_x_continuous(
+    breaks = pl_values[pl_values$agg_level == agg_lev, "r"]
+  ) +
+  scale_fill_manual(values = feat_colors)+
+  theme(
+    axis.title.x=element_blank(),
+    axis.text.x=element_blank(),
+    axis.ticks.x=element_blank(),
+    text = element_text(size = 9, family = "sans"),
+    axis.title.y = element_text(size = 10),
+    axis.text.y = element_text(hjust = 1),
+    legend.position="bottom", legend.title = element_text(size = 10),    
+    )
+
+# ggsave(filename = "Fig3_main.tiff", plot = g1, device = "tiff", path = "../paper_materials/plots_after_review/", dpi = 600, units = "in", width = 5, height = 3, scale = 2, compression = "lzw")
+
+
 agg_lev <- "99.5."
 
 g1 <- ggplot(pl_values[pl_values$agg_level == agg_lev, ], 
@@ -701,17 +729,19 @@ g1 <- ggplot(pl_values[pl_values$agg_level == agg_lev, ],
     axis.title.x=element_blank(),
     axis.text.x=element_blank(),
     axis.ticks.x=element_blank(),
-    text = element_text(size = 8, family = "sans"),
+    text = element_text(size = 9, family = "sans"),
     axis.title.y = element_text(size = 10),
     axis.text.y = element_text(hjust = 1),
     legend.position="bottom", legend.title = element_text(size = 10),    
     )
 
-# ggsave(filename = "Fig20a_99.tiff", plot = g1, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 5, height = 3, scale = 2, compression = "lzw")
-# ggsave(filename = "Fig20a_995.tiff", plot = g1, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 5, height = 3, scale = 2, compression = "lzw")
+# ggsave(filename = "Fig9_supp.tiff", plot = g1, device = "tiff", path = "../paper_materials/plots_after_review/", dpi = 600, units = "in", width = 5, height = 3, scale = 2, compression = "lzw")
 ```
 
 
+```{r}
+g1
+```
 
 
 
@@ -903,7 +933,7 @@ g1 <- ggplot(
   ylab("Importance")+
   xlab("Labeling type")
 
-# ggsave(filename = "Fig12_1.tiff", plot = g1, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 6, height = 5, scale = 2.2, compression = "lzw")
+# ggsave(filename = "Fig3A_supp.tiff", plot = g1, device = "tiff", path = "../paper_materials/plots_after_review/", dpi = 600, units = "in", width = 6, height = 5, scale = 2.2, compression = "lzw")
 
 g2 <- ggplot(
   sec_str_data[(sec_str_data$cancer_type %in% canc[6:10]), ],
@@ -917,15 +947,17 @@ g2 <- ggplot(
   ylab("Importance")+
   xlab("Labeling type")
 
-# ggsave(filename = "Fig12_2.tiff", plot = g2, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 6, height = 5, scale = 2.2, compression = "lzw")
+# ggsave(filename = "Fig3B_supp.tiff", plot = g2, device = "tiff", path = "../paper_materials/plots_after_review/", dpi = 600, units = "in", width = 6, height = 5, scale = 2.2, compression = "lzw")
 
-g_f <- ggarrange(g1, g2,  
-          labels = c("A", "B"),
-          ncol = 1, nrow = 2, heights = c(1, 1),
-          font.label = list(size = 10, color = "black", face ="bold"))
+# g_f <- ggarrange(g1, g2,  
+#           labels = c("A", "B"),
+#           ncol = 1, nrow = 2, heights = c(1, 1),
+#           font.label = list(size = 10, color = "black", face ="bold"))
 # ggsave(filename = "Fig12.tiff", plot = g_f, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 6, height = 5, scale = 2.2, compression = "lzw")
 breast_sec_str <- sec_str_data[(sec_str_data$cancer_type == "breast") & (sec_str_data$agg_level == "99."), ]
+g_f
 ```
+
 
 TF
 
@@ -959,7 +991,7 @@ g1 <- ggplot(
   ylab("Importance")+
   xlab("Labeling type")
 
-# ggsave(filename = "Fig14_1.tiff", plot = g1, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 6, height = 5, scale = 2.2, compression = "lzw")
+# ggsave(filename = "Fig5A_supp.tiff", plot = g1, device = "tiff", path = "../paper_materials/plots_after_review/", dpi = 600, units = "in", width = 6, height = 5, scale = 2.2, compression = "lzw")
 
 g2 <- ggplot(
   tf_data[(tf_data$cancer_type %in% canc[6:10]), ],
@@ -973,12 +1005,12 @@ g2 <- ggplot(
   ylab("Importance")+
   xlab("Labeling type")
 
-# ggsave(filename = "Fig14_2.tiff", plot = g2, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 6, height = 5, scale = 2.2, compression = "lzw")
+# ggsave(filename = "Fig5B_supp.tiff", plot = g2, device = "tiff", path = "../paper_materials/plots_after_review/", dpi = 600, units = "in", width = 6, height = 5, scale = 2.2, compression = "lzw")
 
-g_f <- ggarrange(g1, g2,  
-          labels = c("A", "B"),
-          ncol = 1, nrow = 2, heights = c(1, 1),
-          font.label = list(size = 10, color = "black", face ="bold"))
+# g_f <- ggarrange(g1, g2,  
+#           labels = c("A", "B"),
+#           ncol = 1, nrow = 2, heights = c(1, 1),
+#           font.label = list(size = 10, color = "black", face ="bold"))
 # ggsave(filename = "Fig14.tiff", plot = g_f, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 6, height = 5, scale = 2.2, compression = "lzw")
 breast_tf <- tf_data[(tf_data$cancer_type == "breast") & (tf_data$agg_level == "99."), ]
 ```
@@ -1066,6 +1098,7 @@ g3 <- ggplot(
     legend.position="bottom", legend.title = element_text(size = 10),
     legend.text = element_text(size=8)
     )
+g3
 # ggsave(filename = "Fig1.tiff", plot = g3, device = "tiff", path = "../../Рабочий стол/", dpi = 600, units = "in", width = 6, height = 6, scale = 2.2, compression = "lzw")
 # ggsave(filename = "Fig2.tiff", plot = g4, device = "tiff", path = "../../Рабочий стол/", dpi = 600, units = "in", width = 6, height = 5, scale = 2.2, compression = "lzw")
 ```
@@ -1145,7 +1178,7 @@ g1 <- ggplot(
  aes(x=reorder(raw_feature, importance, FUN=median), y=importance, fill=reorder(raw_feature, importance, FUN=median))
 ) + 
   geom_boxplot()+
-  facet_wrap(~upper, scales="free")+
+  facet_wrap(~upper)+
   theme_light_custom() + 
   scale_fill_manual(values = feat_colors)+
   labs(fill='Feature')+
@@ -1165,7 +1198,7 @@ g2 <- ggplot(
   aes(x=reorder(raw_feature, importance, FUN=median), y=importance, fill=reorder(raw_feature, importance, FUN=median))
 ) + 
   geom_boxplot()+
-  facet_wrap(~upper, scales="free")+
+  facet_wrap(~upper)+
   theme_light_custom() + 
   scale_fill_manual(values = feat_colors)+
   labs(fill='Feature')+
@@ -1182,7 +1215,7 @@ g_f <- ggarrange(g1, g2,
           ncol = 1, nrow = 2, heights = c(1, 1),
           font.label = list(size = 10, color = "black", face ="bold"))
 g_f
-# ggsave(filename = "Fig22.tiff", plot = g_f, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 5, height = 3, scale = 2.2, compression = "lzw")
+# ggsave(filename = "Fig4_main.tiff", plot = g_f, device = "tiff", path = "../paper_materials/plots_after_review/", dpi = 600, units = "in", width = 5, height = 3, scale = 2.2, compression = "lzw")
 
 ```
 
@@ -1213,11 +1246,7 @@ g1 <- ggplot(df_onegroup,
   xlab("Feature group") + 
   ylab("Mean lift of recall") +
   labs(fill = "Labeling type")
-g1
-# ggsave(filename = "Fig8.tiff", plot = g1, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 5, height = 3, scale = 2, compression = "lzw")
-```
 
-```{r}
 g2 <- ggplot(df_onegroup, 
              aes(x=reorder(feature_group_name_proper, Mean.test.ROC.AUC), y=Mean.test.ROC.AUC, fill=Labeling.type))+
   geom_boxplot()+
@@ -1225,16 +1254,28 @@ g2 <- ggplot(df_onegroup,
   xlab("Feature group") + 
   ylab("Mean ROC AUC") +
   labs(fill = "Labeling type")
-g2
-# ggsave(filename = "Fig9.tiff", plot = g2, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 5, height = 3, scale = 2, compression = "lzw")
 
 g_f <- ggarrange(g1, g2,  
           labels = c("A", "B"),
           ncol = 1, nrow = 2, heights = c(1, 1),
           font.label = list(size = 10, color = "black", face ="bold"))
-# ggsave(filename = "Fig8.5.tiff", plot = g_f, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 6, height = 5, scale = 2.2, compression = "lzw")
+# ggsave(filename = "Fig2_supp.tiff", plot = g_f, device = "tiff", path = "../paper_materials/plots_after_review/", dpi = 600, units = "in", width = 6, height = 5, scale = 2.2, compression = "lzw")
+g_f
 ```
 
+```{r}
+df_onegroup %>%
+  group_by(Feature.group) %>%
+  summarize(
+    med_Mean.lift.of.recall = median(Mean.lift.of.recall),
+    med_Mean.test.ROC.AUC = median( Mean.test.ROC.AUC),
+    mean_Mean.lift.of.recall = mean(Mean.lift.of.recall),
+    mean_Mean.test.ROC.AUC = mean( Mean.test.ROC.AUC)
+    ) %>%
+  arrange(
+    desc(mean_Mean.lift.of.recall)
+  )
+```
 
 By cancer type - mean (across all labeling types) ratio of current mean lift of recall from max mean lift of recall for the cancer type  без 99,9
 
@@ -1271,6 +1312,9 @@ df_onegroup_by_cancer_1 <- df_onegroup_by_cancer %>%
   arrange(Cancer.type, -mean_ratio_lift) %>% 
   mutate(.r = row_number())
 
+colors <- as.vector(proper_feature_group_names$colors)
+names(colors) <- proper_feature_group_names$feature_group_name_proper
+
 g3 <- ggplot(df_onegroup_by_cancer_1, 
        aes(x=-.r,
            y=mean_ratio_lift, fill=feature_group_name_proper))+
@@ -1285,7 +1329,9 @@ g3 <- ggplot(df_onegroup_by_cancer_1,
   scale_fill_manual(values = colors)+
   ylab("Scaled mean lift of recall")+
   xlab("Feature group") +
-  labs(fill="Feature group")
+  labs(fill="Feature group")+
+  guides(fill = guide_legend(nrow = 1))
+g3
 ```
 
 By cancer type - mean (across all labeling types) ratio of current mean ROC AUC from max mean ROC AUC for the cancer type  без 99,9
@@ -1310,13 +1356,15 @@ g4 <- ggplot(df_onegroup_by_cancer_2,
   scale_fill_manual(values = colors)+
   ylab("Scaled mean ROC AUC")+
   xlab("Feature group") +
-  labs(fill="Feature group")
+  labs(fill="Feature group")+
+  guides(fill = guide_legend(nrow = 1))
 
 g_f <- ggarrange(g3, g4,  
           labels = c("A", "B"),
           ncol = 1, nrow = 2, heights = c(1, 1),
           font.label = list(size = 10, color = "black", face ="bold"))
-# ggsave(filename = "Fig10.tiff", plot = g_f, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 6, height = 5, scale = 2.2, compression = "lzw")
+# ggsave(filename = "Fig1_main.tiff", plot = g_f, device = "tiff", path = "../paper_materials/plots_after_review/", dpi = 600, units = "in", width = 6, height = 5, scale = 2.2, compression = "lzw")
+g_f
 ```
 
 

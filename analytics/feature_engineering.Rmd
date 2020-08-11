@@ -163,6 +163,6 @@ g_f <- ggarrange(g1, g2,
           font.label = list(size = 10, color = "black", face ="bold")
           )
 g_f
-# ggsave(filename = "Fig1.tiff", plot = g_f, device = "tiff", path = "../paper_materials/section 2/", dpi = 600, units = "in", width = 5, height = 3, scale = 2, compression = "lzw")
+ggsave(filename = "Fig10_supp.tiff", plot = g_f, device = "tiff", path = "../paper_materials/plots_after_review/", dpi = 600, units = "in", width = 5, height = 3, scale = 2, compression = "lzw")
 
 ```

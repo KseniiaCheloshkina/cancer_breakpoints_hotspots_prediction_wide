@@ -19,6 +19,9 @@ library(reshape2)
 library(formattable)
 library(openxlsx)
 
+source("../run/tools.R")
+source("../run/features.R")
+
 win_len <- 100000
 
 ### get final results data
@@ -236,6 +239,7 @@ for_plot_final <- rbind.data.frame(
   roc_data_comp_m %>% select(cancer_type, value, variable, type)%>% filter(variable == 'ROC AUC'),
   comp_rec_pl %>% select(cancer_type, value, variable, type) %>% filter(variable == 'Lift of recall')
 )
+
 g1 <- ggplot(for_plot_final, aes(x=cancer_type, y=value, fill=type)) +
   geom_bar(stat='identity',  color="black", position = "dodge") +
   facet_wrap(~variable, nrow = 2, scales="free_y") +
@@ -243,16 +247,14 @@ g1 <- ggplot(for_plot_final, aes(x=cancer_type, y=value, fill=type)) +
   xlab("Cancer type") +
   ylab("Mean value") +
   labs(fill = "Feature set")
-g1
 
 g_f <- ggarrange(g_boruta, g1,  
           labels = c("A", "B"),
           ncol = 1, nrow = 2, heights = c(1, 1),
           font.label = list(size = 10, color = "black", face ="bold"))
 g_f
-# ggsave(filename = "FigS13.tiff", plot = g_f, device = "tiff", path = "../paper_materials/supplemental/",
+# ggsave(filename = "Fig13_supp.tiff", plot = g_f, device = "tiff", path = "../paper_materials/plots_after_review/",
 #        dpi = 600, units = "in", width = 5, height = 5, scale = 2, compression = "lzw")
-# ggsave(filename = "Fig3.tiff", plot = g1, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 5, height = 3, scale = 2, compression = "lzw")
 ```
 
 
@@ -271,8 +273,7 @@ ggplot(recall_stats_comp_m %>% filter(quantile == 0.05), aes(x=cancer_type, y=va
 ## Final feature importance
 
 ```{r}
-source("../run/tools.R")
-source("../run/features.R")
+
 best_features <- read.xlsx("../data/output/boruta_plus_sign_stats.xlsx", sheet = "hotspots_features")
 feat_cols <- unique(best_features$feature)
 
@@ -312,7 +313,7 @@ g1 <- ggplot(best_features, aes(x=cancer_type, y=feature_ord, fill=feature_group
   labs(fill="Feature group")+
   scale_fill_manual(values = feat_colors)
 g1
-# ggsave(filename = "Fig18.tiff", plot = g1, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 5, height = 3, scale = 2, compression = "lzw")
+# ggsave(filename = "Fig2_main.tiff", plot = g1, device = "tiff", path = "../paper_materials/plots_after_review/", dpi = 600, units = "in", width = 5, height = 3, scale = 2, compression = "lzw")
 ```
 
 Выводы:

@@ -298,7 +298,7 @@ g_f <- ggarrange(g1, g2,
           ncol = 1, nrow = 2, heights = c(1, 3),
           font.label = list(size = 10, color = "black", face ="bold"))
 g_f
-# ggsave(filename = "Fig11.tiff", plot = g_f, device = "tiff", path = "../paper_materials/supplemental/", dpi = 600, units = "in", width = 7, height = 5, scale = 2, compression = "lzw")
+# ggsave(filename = "Fig11_supp.tiff", plot = g_f, device = "tiff", path = "../paper_materials/plots_after_review//", dpi = 600, units = "in", width = 7, height = 5, scale = 2, compression = "lzw")
 ```
  
 ## Comparison of models quality for baseline model (hospots vs all the rest windows - built on all features) and reduced model (hotspots vs rest breakpoints)
@@ -319,7 +319,7 @@ g3 <- ggplot(roc_auc_data_base_all[roc_auc_data_base_all$type != "bkpt_q", ], ae
   theme_light_custom() + 
   labs(fill = "Model type")+
   theme(
-    axis.text.x = element_text(angle = 30, vjust = 1, hjust = 1)
+    axis.text.x = element_text(angle = 30, vjust = 1, hjust = 1, size=9)
   )
 
 # ggsave(filename = "Fig6.tiff", plot = g3, device = "tiff", path = "../paper_materials/", dpi = 600, units = "in", width = 5, height = 3, scale = 2, compression = "lzw")
@@ -363,7 +363,7 @@ g4 <- ggplot(recall_data_base_all %>%
   xlab("Labeling threshold") + 
   ylab("Lift of recall")+
   theme(
-    axis.text.x = element_text(angle = 30, vjust = 1, hjust = 1)
+    axis.text.x = element_text(angle = 30, vjust = 1, hjust = 1, size=9)
   )
 g4
 ```
@@ -375,7 +375,7 @@ g_f <- ggarrange(g3, g4,
           ncol = 1, nrow = 2, heights = c(1, 3),
           font.label = list(size = 10, color = "black", face ="bold"))
 g_f
-# ggsave(filename = "Fig5a.tiff", plot = g_f, device = "tiff", path = "../paper_materials/supplemental/", dpi = 600, units = "in", width = 7, height = 5, scale = 2, compression = "lzw")
+# ggsave(filename = "Fig5_main.tiff", plot = g_f, device = "tiff", path = "../paper_materials/plots_after_review//", dpi = 600, units = "in", width = 7, height = 5, scale = 2, compression = "lzw")
 ```
 
 
@@ -437,7 +437,7 @@ rec_stats_all <- rec_stats_all %>%
 lev_cancer_types <- c("pancreatic", "breast", "prostate","ovary", "uterus", "skin","liver", "blood", "bone", "brain")
 rec_stats_all$cancer_type <- factor(rec_stats_all$cancer_type, levels = lev_cancer_types)
 
-g4 <- ggplot(rec_stats_all, aes(x=as.character(quantile), y=cancer_type, fill=ratio_hsp_to_bkpt)) + 
+g4 <- ggplot(rec_stats_all[rec_stats_all$agg_level > "96",], aes(x=as.character(quantile), y=cancer_type, fill=ratio_hsp_to_bkpt)) + 
   geom_tile() + 
   facet_grid(~agg_level, switch = "x")+ 
   scale_fill_gradientn(colours = pal)+
@@ -463,7 +463,7 @@ g4
 rec_stats_all$ratio_hsp_to_hspvsbkpt_bucket <- rec_stats_all$ratio_hsp_to_hspvsbkpt 
 rec_stats_all$ratio_hsp_to_hspvsbkpt_bucket[rec_stats_all$ratio_hsp_to_hspvsbkpt < 0.85] <- 0.5
 rec_stats_all$ratio_hsp_to_hspvsbkpt_bucket[rec_stats_all$ratio_hsp_to_hspvsbkpt > 3] <- 3
-g5 <- ggplot(rec_stats_all, aes(x=as.character(quantile), y=cancer_type, fill=ratio_hsp_to_hspvsbkpt_bucket)) + 
+g5 <- ggplot(rec_stats_all[rec_stats_all$agg_level > "96",], aes(x=as.character(quantile), y=cancer_type, fill=ratio_hsp_to_hspvsbkpt_bucket)) + 
   geom_tile() + 
   facet_grid(~agg_level, switch = "x")+ 
   scale_fill_gradientn(colours = pal)+
@@ -507,8 +507,8 @@ g_f1 <- ggarrange(g4, g5,
           labels = c("A", "B"),
           ncol = 2, nrow = 1, 
           font.label = list(size = 10, color = "black", face ="bold"))
-
-# ggsave(filename = "Fig7.tiff", plot = g_f1, device = "tiff", path = "../paper_materials/supplemental/", dpi = 600, units = "in", width = 6, height = 5, scale = 2, compression = "lzw")
+g_f1
+# ggsave(filename = "Fig14_supp.tiff", plot = g_f1, device = "tiff", path = "../paper_materials/plots_after_review/", dpi = 600, units = "in", width = 6, height = 5, scale = 2, compression = "lzw")
 ```
 
 Tables for report:

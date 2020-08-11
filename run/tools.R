@@ -257,7 +257,7 @@ proper_feature_group_names <- data.frame(
 
 ######### publication plots theme
 theme_light_custom <- function (scale_fill=TRUE) {
-  base_size <- 8
+  base_size <- 9
   base_family <- "sans"
   base_line_size <- base_size / 22
   base_rect_size <- base_size / 22

@@ -14,7 +14,7 @@ Each file contains next fields: "chr" (chromosome name), "from" (genome window s
 
   
 ### Structure of repository:
-- run: all scripts used in paper. Main scripts:
+- `run`: all scripts used in paper. Main scripts:
   - filter_bins.R: script for getting the list of all genome windows for specified window length excluding first and last windows, centromeres, telomeres and blacklisted regions
   - target_<N_name>.R: scripts for processing breakpoints data from the ICGC (filtering, merging, getting breakpoints density and hotspots)
   - calculate_coverage.R: script for calculating coverage of features in genome windows (has two pipelines: for "conserved" and tissue-specific features)
@@ -29,5 +29,6 @@ Each file contains next fields: "chr" (chromosome name), "from" (genome window s
   - train_by_feature_group.R: script for modeling using each feature group separately
   - systematic_target.R: script for creating new targets for checking the hypothesys of breakpoints randomness
   - train_bkpt_randomness.R: script for modeling using targets for checking the hypothesys of breakpoints randomness
-
-This repository has [KseniiaCheloshkina/cbp_data](https://github.com/KseniiaCheloshkina/cbp_data/) repository as a submodule, using some general purpose tools from its run/ directory.
+- `analytics`: R notebooks for analysis of results
+- `cbp_data`: common tools for R bioinformatics projects
+- `datasets`: folder with datasets comprising genomic coordinates for 30-times repeated train-test split (for benchmarking)

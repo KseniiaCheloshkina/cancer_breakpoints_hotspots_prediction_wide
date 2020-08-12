@@ -71,90 +71,36 @@ for (feat in features_cols){
 all_conserved_feats <- setdiff(features_cols, all_tissue_spec_feats)
 
 # get groups of features
-sec_str <- c("A_Phased_Repeat","Direct_Repeat", "Inverted_Repeat", "Mirror_Repeat","Short_Tandem_Repeat",
-             "G_quadruplex", "stemloops_16_50", "stemloops_6_15", "Z_DNA_Motif")
-all_sec_str <- vector()
-for (feat in features_cols){
-  for (col in sec_str){
-    all_sec_str <- c(all_sec_str, grep(x = feat, pattern = col, value = TRUE))  
-  }
-}
+df_features <- get_feature_df(features_cols)
 
-reg <- c("X3UTR", "X5UTR", "codingExons", "downstream", "introns", "promoters", "WholeGenes")
-all_reg <- vector()
-for (feat in features_cols){
-  for (col in reg){
-    all_reg <- c(all_reg, grep(x = feat, pattern = col, value = TRUE))  
-  }
-}
-
-tad <- c("tad_boundaries_liver", "tad_boundaries_ovary", "tad_boundaries_pancreatic")
-all_tad <- vector()
-for (feat in features_cols){
-  for (col in tad){
-    all_tad <- c(all_tad, grep(x = feat, pattern = col, value = TRUE))  
-  }
-}
-
-chromatin <-c("cancer_skin_DNase_seq", "cancer_brain_DNase_seq", "cancer_blood_DNase_seq",
-              "cancer_prostate_DNase_seq", "cancer_pancreas_DNase_seq", "cancer_ovary_DNase_seq",
-              "cancer_liver_DNase_seq", "cancer_breast_DNase_seq", "cancer_uterus_DNase_seq",
-              "cancer_bone_DNase_seq")
-all_chromatin <- vector()
-for (feat in features_cols){
-  for (col in chromatin){
-    all_chromatin <- c(all_chromatin, grep(x = feat, pattern = col, value = TRUE))  
-  }
-}
-
-methyl <- c("cancer_brain_DNA_methylation", "cancer_breast_DNA_methylation",
-            "cancer_liver_DNA_methylation", "cancer_pancreas_DNA_methylation",
-            "cancer_skin_DNA_methylation", "cancer_uterus_DNA_methylation")
-all_methyl <- vector()
-for (feat in features_cols){
-  for (col in methyl){
-    all_methyl <- c(all_methyl, grep(x = feat, pattern = col, value = TRUE))  
-  }
-}
-
-histones <- c( "cancer_liver_H3K27ac.human", "cancer_uterus_H3K27ac.human", "cancer_blood_H3K27ac.human",
-               "cancer_brain_H3K27ac.human",
-               "cancer_pancreas_H3K27ac.human","cancer_blood_H3K27me3.human","cancer_brain_H3K27me3.human",    
-               "cancer_blood_H3K36me3.human","cancer_pancreas_H3K36me3.human","cancer_brain_H3K36me3.human",    
-               "cancer_pancreas_H3K4me1.human","cancer_blood_H3K4me1.human","cancer_brain_H3K4me1.human",
-               "cancer_breast_H3K4me3.human","cancer_uterus_H3K4me3.human","cancer_liver_H3K4me3.human",
-               "cancer_brain_H3K4me3.human","cancer_blood_H3K4me3.human","cancer_skin_H3K4me3.human",
-               "cancer_pancreas_H3K4me3.human","cancer_brain_H3K9me3.human","cancer_pancreas_H3K9me3.human",
-               "cancer_blood_H3K9me3.human" )
-all_histones <- vector()
-for (feat in features_cols){
-  for (col in histones){
-    all_histones <- c(all_histones, grep(x = feat, pattern = col, value = TRUE))  
-  }
-}
-
-tf <- c("cancer_liver_ATF3.human", "cancer_liver_CTCF.human", "cancer_pancreas_CTCF.human",
-        "cancer_liver_EGR1.human", "cancer_liver_FOXA1.human", "cancer_liver_FOXA2.human", 
-        "cancer_liver_GABPA.human","cancer_liver_HNF4A.human", "cancer_liver_HNF4G.human",
-        "cancer_liver_JUND.human","cancer_liver_MAX.human", "cancer_liver_NR2F2.human",
-        "cancer_liver_REST.human", "cancer_liver_RXRA.human", "cancer_liver_SP1.human",
-        "cancer_liver_YY1.human", "cancer_liver_ZBTB33.human")
-all_tf <- vector()
-for (feat in features_cols){
-  for (col in tf){
-    all_tf <- c(all_tf, grep(x = feat, pattern = col, value = TRUE))  
-  }
-}
-
-wo_tf_feats <- setdiff(features_cols, all_tf)
-wo_tad_feats <- setdiff(features_cols, all_tad)
-wo_reg_feats <- setdiff(features_cols, all_reg)
-wo_sec_str_feats <- setdiff(features_cols, all_sec_str)
-wo_histones <- setdiff(features_cols, all_histones)
-wo_methyl <- setdiff(features_cols, all_methyl)
-wo_chromatin <- setdiff(features_cols, all_chromatin)
-
-
+wo_tf_feats <- setdiff(
+  features_cols,
+  df_features[df_features['feature_group'] == 'tf', 'feature'] %>% as.character()
+)
+wo_tad_feats <- setdiff(
+  features_cols,
+  df_features[df_features['feature_group'] == 'tad', 'feature'] %>% as.character()
+)
+wo_reg_feats <- setdiff(
+  features_cols,
+  df_features[df_features['feature_group'] == 'reg', 'feature'] %>% as.character()
+)
+wo_sec_str_feats <- setdiff(
+  features_cols,
+  df_features[df_features['feature_group'] == 'sec_str', 'feature'] %>% as.character()
+)
+wo_histones <- setdiff(
+  features_cols,
+  df_features[df_features['feature_group'] == 'histones', 'feature'] %>% as.character()
+)
+wo_methyl <- setdiff(
+  features_cols,
+  df_features[df_features['feature_group'] == 'methyl', 'feature'] %>% as.character()
+)
+wo_chromatin <- setdiff(
+  features_cols,
+  df_features[df_features['feature_group'] == 'chromatin', 'feature'] %>% as.character()
+)
 
 # exclude targets with small number of positive examples
 excluded_levels <- list()
@@ -388,32 +334,14 @@ for (feat in features_cols){
 all_conserved_feats <- setdiff(features_cols, all_tissue_spec_feats)
 
 # get groups of features
-sec_str <- c("A_Phased_Repeat","Direct_Repeat", "Inverted_Repeat", "Mirror_Repeat","Short_Tandem_Repeat",
-             "G_quadruplex", "stemloops_16_50", "stemloops_6_15", "Z_DNA_Motif")
-reg <- c("X3UTR", "X5UTR", "codingExons", "downstream", "introns", "promoters", "WholeGenes")
-tad <- c("tad_boundaries_liver", "tad_boundaries_ovary", "tad_boundaries_pancreatic")
-chromatin <-c("cancer_skin_DNase_seq", "cancer_brain_DNase_seq", "cancer_blood_DNase_seq",
-              "cancer_prostate_DNase_seq", "cancer_pancreas_DNase_seq", "cancer_ovary_DNase_seq",
-              "cancer_liver_DNase_seq", "cancer_breast_DNase_seq", "cancer_uterus_DNase_seq",
-              "cancer_bone_DNase_seq")
-methyl <- c("cancer_brain_DNA_methylation", "cancer_breast_DNA_methylation",
-            "cancer_liver_DNA_methylation", "cancer_pancreas_DNA_methylation",
-            "cancer_skin_DNA_methylation", "cancer_uterus_DNA_methylation")
-histones <- c( "cancer_liver_H3K27ac.human", "cancer_uterus_H3K27ac.human", "cancer_blood_H3K27ac.human",
-               "cancer_brain_H3K27ac.human",
-               "cancer_pancreas_H3K27ac.human","cancer_blood_H3K27me3.human","cancer_brain_H3K27me3.human",    
-               "cancer_blood_H3K36me3.human","cancer_pancreas_H3K36me3.human","cancer_brain_H3K36me3.human",    
-               "cancer_pancreas_H3K4me1.human","cancer_blood_H3K4me1.human","cancer_brain_H3K4me1.human",
-               "cancer_breast_H3K4me3.human","cancer_uterus_H3K4me3.human","cancer_liver_H3K4me3.human",
-               "cancer_brain_H3K4me3.human","cancer_blood_H3K4me3.human","cancer_skin_H3K4me3.human",
-               "cancer_pancreas_H3K4me3.human","cancer_brain_H3K9me3.human","cancer_pancreas_H3K9me3.human",
-               "cancer_blood_H3K9me3.human" )
-tf <- c("cancer_liver_ATF3.human", "cancer_liver_CTCF.human", "cancer_pancreas_CTCF.human",
-        "cancer_liver_EGR1.human", "cancer_liver_FOXA1.human", "cancer_liver_FOXA2.human", 
-        "cancer_liver_GABPA.human","cancer_liver_HNF4A.human", "cancer_liver_HNF4G.human",
-        "cancer_liver_JUND.human","cancer_liver_MAX.human", "cancer_liver_NR2F2.human",
-        "cancer_liver_REST.human", "cancer_liver_RXRA.human", "cancer_liver_SP1.human",
-        "cancer_liver_YY1.human", "cancer_liver_ZBTB33.human")
+df_features <- get_feature_df(features_cols)
+sec_str <- df_features[df_features['feature_group'] == 'sec_str', 'feature'] %>% as.character()
+reg <- df_features[df_features['feature_group'] == 'reg', 'feature'] %>% as.character()
+tad <- df_features[df_features['feature_group'] == 'tad', 'feature'] %>% as.character()
+chromatin <- df_features[df_features['feature_group'] == 'chromatin', 'feature'] %>% as.character()
+methyl <- df_features[df_features['feature_group'] == 'methyl', 'feature'] %>% as.character()
+histones <- df_features[df_features['feature_group'] == 'histones', 'feature'] %>% as.character()
+tf <- df_features[df_features['feature_group'] == 'tf', 'feature'] %>% as.character()
 
 
 all_analyzed_cancers <- data.frame(

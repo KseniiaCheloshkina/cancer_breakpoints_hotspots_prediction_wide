@@ -22,7 +22,7 @@ library(GGally)
 library(wesanderson)
 library(ggsci)
 pal <- wes_palette("Zissou1", 100, type = "continuous")
-
+source("run/features.R")
 win_len <- 100000
 
 # load data
@@ -202,11 +202,6 @@ ggplot(melted_cormat, aes(Var2, Var1, fill = value))+
 ```
 
 ```{r include=FALSE, echo=FALSE}
-pancr_ind <- grep(melted_cormat$Var1, pattern = "pancreas")
-melted_cormat <- melted_cormat[-pancr_ind,]
-pancr_ind <- grep(melted_cormat$Var2, pattern = "pancreas")
-melted_cormat <- melted_cormat[-pancr_ind,]
-
 source("../run/features.R")
 df_f <- get_feature_df(unique(melted_cormat$Var1))
 
@@ -268,53 +263,8 @@ ggplot(melted_cormat, aes(value)) +
 Distribution of mean correlation between groups of features
 
 ```{r}
-feat_groups <- data.frame(
-  feat = c("A_Phased_Repeat","Direct_Repeat", "Inverted_Repeat", "Mirror_Repeat","Short_Tandem_Repeat",
-             "G_quadruplex", "stemloops_16_50", "stemloops_6_15", "Z_DNA_Motif"),
-  feat_group = "sec_str" 
-)
-feat_groups <- rbind(feat_groups, data.frame(
-  feat = c("X3UTR", "X5UTR", "codingExons", "downstream", "introns", "promoters", "WholeGenes"),
-  feat_group = "reg"   
-))
-feat_groups <- rbind(feat_groups, data.frame(
-  feat = c("tad_boundaries_liver", "tad_boundaries_ovary", "tad_boundaries_pancreatic"),
-  feat_group = "tad"   
-))
-feat_groups <- rbind(feat_groups, data.frame(
-  feat = c("cancer_skin_DNase_seq", "cancer_brain_DNase_seq", "cancer_blood_DNase_seq",
-              "cancer_prostate_DNase_seq", "cancer_pancreas_DNase_seq", "cancer_ovary_DNase_seq",
-              "cancer_liver_DNase_seq", "cancer_breast_DNase_seq", "cancer_uterus_DNase_seq",
-              "cancer_bone_DNase_seq"), 
-  feat_group = "chromatin"   
-)) 
-feat_groups <- rbind(feat_groups, data.frame(
-  feat = c("cancer_brain_DNA_methylation", "cancer_breast_DNA_methylation",
-            "cancer_liver_DNA_methylation", "cancer_pancreas_DNA_methylation",
-            "cancer_skin_DNA_methylation", "cancer_uterus_DNA_methylation"), 
-  feat_group = "methyl"   
-)) 
-feat_groups <- rbind(feat_groups, data.frame(
-  feat = c( "cancer_liver_H3K27ac.human", "cancer_uterus_H3K27ac.human", "cancer_blood_H3K27ac.human",
-               "cancer_brain_H3K27ac.human",
-               "cancer_pancreas_H3K27ac.human","cancer_blood_H3K27me3.human","cancer_brain_H3K27me3.human",    
-               "cancer_blood_H3K36me3.human","cancer_pancreas_H3K36me3.human","cancer_brain_H3K36me3.human",    
-               "cancer_pancreas_H3K4me1.human","cancer_blood_H3K4me1.human","cancer_brain_H3K4me1.human",
-               "cancer_breast_H3K4me3.human","cancer_uterus_H3K4me3.human","cancer_liver_H3K4me3.human",
-               "cancer_brain_H3K4me3.human","cancer_blood_H3K4me3.human","cancer_skin_H3K4me3.human",
-               "cancer_pancreas_H3K4me3.human","cancer_brain_H3K9me3.human","cancer_pancreas_H3K9me3.human",
-               "cancer_blood_H3K9me3.human" ), 
-  feat_group = "histones"   
-)) 
-feat_groups <- rbind(feat_groups, data.frame(
-  feat = c("cancer_liver_ATF3.human", "cancer_liver_CTCF.human", "cancer_pancreas_CTCF.human",
-        "cancer_liver_EGR1.human", "cancer_liver_FOXA1.human", "cancer_liver_FOXA2.human", 
-        "cancer_liver_GABPA.human","cancer_liver_HNF4A.human", "cancer_liver_HNF4G.human",
-        "cancer_liver_JUND.human","cancer_liver_MAX.human", "cancer_liver_NR2F2.human",
-        "cancer_liver_REST.human", "cancer_liver_RXRA.human", "cancer_liver_SP1.human",
-        "cancer_liver_YY1.human", "cancer_liver_ZBTB33.human"), 
-  feat_group = "tf"   
-))
+feat_groups <- get_feature_df(features_cols)
+names(feat_groups) <- c("feat", "feat_group")
 
 melted_cormat <- melted_cormat %>%
   inner_join(feat_groups, by=c("Var1" = "feat")) %>%
@@ -440,7 +390,7 @@ ggplot(feat_melted[feat_melted$variable %in% tf, ], aes(value)) +
 ``` {r}
 dnase <- c(  
   "cancer_skin_DNase_seq", "cancer_brain_DNase_seq", "cancer_blood_DNase_seq", 
-  "cancer_prostate_DNase_seq", "cancer_pancreas_DNase_seq", "cancer_ovary_DNase_seq", 
+  "cancer_prostate_DNase_seq", "cancer_ovary_DNase_seq",
   "cancer_liver_DNase_seq", "cancer_breast_DNase_seq", "cancer_uterus_DNase_seq", 
   "cancer_bone_DNase_seq")
 
@@ -460,7 +410,7 @@ ggplot(feat_melted[feat_melted$variable %in% dnase, ], aes(value)) +
 ``` {r}
 meth <- c(  
   "cancer_brain_DNA_methylation", "cancer_breast_DNA_methylation",
-  "cancer_liver_DNA_methylation", "cancer_pancreas_DNA_methylation",
+  "cancer_liver_DNA_methylation",
   "cancer_skin_DNA_methylation", "cancer_uterus_DNA_methylation")
 
 ggplot(feat_melted[feat_melted$variable %in% meth, ], aes(value)) + 
@@ -478,7 +428,7 @@ ggplot(feat_melted[feat_melted$variable %in% meth, ], aes(value)) +
 ``` {r}
 h27 <- c(  
    "cancer_blood_H3K27ac.human","cancer_brain_H3K27ac.human",
-   "cancer_pancreas_H3K27ac.human", "cancer_blood_H3K27me3.human", "cancer_brain_H3K27me3.human")
+ "cancer_blood_H3K27me3.human", "cancer_brain_H3K27me3.human")
 
 ggplot(feat_melted[feat_melted$variable %in% h27, ], aes(value)) + 
   geom_histogram(bins=30) + 
@@ -496,10 +446,9 @@ ggplot(feat_melted[feat_melted$variable %in% h27, ], aes(value)) +
 
 ``` {r}
 hk4 <- c(  
-  "cancer_pancreas_H3K4me1.human", "cancer_blood_H3K4me1.human", "cancer_brain_H3K4me1.human",
+ "cancer_blood_H3K4me1.human", "cancer_brain_H3K4me1.human",
   "cancer_breast_H3K4me3.human", "cancer_uterus_H3K4me3.human", "cancer_liver_H3K4me3.human",
-  "cancer_brain_H3K4me3.human", "cancer_blood_H3K4me3.human", "cancer_skin_H3K4me3.human",
-  "cancer_pancreas_H3K4me3.human"  )
+  "cancer_brain_H3K4me3.human", "cancer_blood_H3K4me3.human", "cancer_skin_H3K4me3.human",)
 
 ggplot(feat_melted[feat_melted$variable %in% hk4, ], aes(value)) + 
   geom_histogram(bins=30) + 
@@ -518,8 +467,8 @@ ggplot(feat_melted[feat_melted$variable %in% hk4, ], aes(value)) +
 
 ``` {r}
 hrest <- c(
-  "cancer_blood_H3K36me3.human", "cancer_pancreas_H3K36me3.human", "cancer_brain_H3K36me3.human",
-  "cancer_brain_H3K9me3.human", "cancer_pancreas_H3K9me3.human", "cancer_blood_H3K9me3.human")
+  "cancer_blood_H3K36me3.human",  "cancer_brain_H3K36me3.human",
+  "cancer_brain_H3K9me3.human",  "cancer_blood_H3K9me3.human")
 
 ggplot(feat_melted[feat_melted$variable %in% hrest, ], aes(value)) + 
   geom_histogram(bins=30) + 
@@ -550,34 +499,13 @@ for (f in feat_names){
   q <- cf(as.numeric(hsp[f]))
   hs_q <- rbind(hs_q, data.frame('feat' = f, 'q' = q))
 }
-
-sec_str <- c("A_Phased_Repeat","Direct_Repeat", "Inverted_Repeat", "Mirror_Repeat","Short_Tandem_Repeat",
-             "G_quadruplex", "stemloops_16_50", "stemloops_6_15", "Z_DNA_Motif" )
-reg <- c("X3UTR", "X5UTR", "codingExons", "downstream", "introns", "promoters", "WholeGenes")
-tad <- c("tad_boundaries_liver", "tad_boundaries_ovary", "tad_boundaries_pancreatic")
-
-chromatin <-c("cancer_skin_DNase_seq", "cancer_brain_DNase_seq", "cancer_blood_DNase_seq",
-              "cancer_prostate_DNase_seq", "cancer_pancreas_DNase_seq", "cancer_ovary_DNase_seq",
-              "cancer_liver_DNase_seq", "cancer_breast_DNase_seq", "cancer_uterus_DNase_seq",
-              "cancer_bone_DNase_seq")
-methyl <- c("cancer_brain_DNA_methylation", "cancer_breast_DNA_methylation",
-            "cancer_liver_DNA_methylation", "cancer_pancreas_DNA_methylation",
-            "cancer_skin_DNA_methylation", "cancer_uterus_DNA_methylation")
-histones <- c( "cancer_liver_H3K27ac.human", "cancer_uterus_H3K27ac.human", "cancer_blood_H3K27ac.human",
-               "cancer_brain_H3K27ac.human",
-               "cancer_pancreas_H3K27ac.human","cancer_blood_H3K27me3.human","cancer_brain_H3K27me3.human",    
-               "cancer_blood_H3K36me3.human","cancer_pancreas_H3K36me3.human","cancer_brain_H3K36me3.human",    
-               "cancer_pancreas_H3K4me1.human","cancer_blood_H3K4me1.human","cancer_brain_H3K4me1.human",
-               "cancer_breast_H3K4me3.human","cancer_uterus_H3K4me3.human","cancer_liver_H3K4me3.human",
-               "cancer_brain_H3K4me3.human","cancer_blood_H3K4me3.human","cancer_skin_H3K4me3.human",
-               "cancer_pancreas_H3K4me3.human","cancer_brain_H3K9me3.human","cancer_pancreas_H3K9me3.human",
-               "cancer_blood_H3K9me3.human" )
-tf <- c("cancer_liver_ATF3.human", "cancer_liver_CTCF.human", "cancer_pancreas_CTCF.human",
-        "cancer_liver_EGR1.human", "cancer_liver_FOXA1.human", "cancer_liver_FOXA2.human", 
-        "cancer_liver_GABPA.human","cancer_liver_HNF4A.human", "cancer_liver_HNF4G.human",
-        "cancer_liver_JUND.human","cancer_liver_MAX.human", "cancer_liver_NR2F2.human",
-        "cancer_liver_REST.human", "cancer_liver_RXRA.human", "cancer_liver_SP1.human",
-        "cancer_liver_YY1.human", "cancer_liver_ZBTB33.human"  )
+sec_str <- df_features[df_features['feat_group'] == 'sec_str', 'feat'] %>% as.character()
+reg <- df_features[df_features['feat_group'] == 'reg', 'feat'] %>% as.character()
+tad <- df_features[df_features['feat_group'] == 'tad', 'feat'] %>% as.character()
+chromatin <- df_features[df_features['feat_group'] == 'chromatin', 'feat'] %>% as.character()
+methyl <- df_features[df_features['feat_group'] == 'methyl', 'feat'] %>% as.character()
+histones <- df_features[df_features['feat_group'] == 'histones', 'feat'] %>% as.character()
+tf <- df_features[df_features['feat_group'] == 'tf', 'feat'] %>% as.character()
 
 hs_q$group <- ''
 hs_q[hs_q$feat %in% sec_str, 'group'] <- "secondary structure"

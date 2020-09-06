@@ -85,3 +85,15 @@ all_df %>%
   arrange(desc(n)) %>%
   first(100) %>%
   ggplot(aes(x=gene_name, y=n)) + geom_bar(stat='identity')
+
+
+all_df <- read.csv("data/adhoc/genes_intersection.csv")
+unique_df <- all_df %>% 
+  select(agg_level, gene_name) %>%
+  unique()
+
+unique_df %>%
+  group_by(agg_level) %>%
+  summarize(n())
+
+write.csv(unique_df, "data/adhoc/genes_intersection_unique_all_cancers.csv")

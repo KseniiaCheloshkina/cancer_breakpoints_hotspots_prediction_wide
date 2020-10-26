@@ -29,8 +29,8 @@ data_path <- "data/datasets/"
 data <- read.csv(
   paste0(data_path, "dataset_", format(win_len, scientific = FALSE), ".csv")
 )
-
-output_path <- "data/output/classifier_results/" 
+data$X <- NULL
+output_path <- "data/output_third/classifier_results/" 
 
 hsp_cols <- grep(x = names(data), pattern = "hsp", value = TRUE)
 

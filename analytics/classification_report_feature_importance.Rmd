@@ -21,24 +21,12 @@ source("../run/tools.R")
 source("../run/features.R")
 win_len <- 100000
 
-data_path <- "../data/output/classifier_results_by_feature_group/" 
+data_path <- "../data/output_third/classifier_results_by_feature_group/" 
 roc_auc_data <- read.csv(paste0(data_path, "result_roc_auc_100000.csv"), row.names = 1, stringsAsFactors = F)
-roc_auc_data <- rbind(
-  roc_auc_data, 
-  read.csv(paste0(data_path, "result_roc_auc_100000_0.csv"), row.names = 1, stringsAsFactors = F)
-)
 roc_auc_data$agg_level[roc_auc_data$agg_level == '99'] <- '99.'
 recall_data <- read.csv(paste0(data_path, "result_recall_100000.csv"), row.names = 1, stringsAsFactors = F)
-recall_data <- rbind(
-  recall_data,
-  read.csv(paste0(data_path, "result_recall_100000_0.csv"), row.names = 1, stringsAsFactors = F)
-)
 recall_data$agg_level[recall_data$agg_level == '99'] <- '99.'
 imp_data <- read.csv(paste0(data_path, "result_imp_100000.csv"), row.names = 1, stringsAsFactors = F)
-imp_data <- rbind(
-  imp_data,
-  read.csv(paste0(data_path, "result_imp_100000_0.csv"), row.names = 1, stringsAsFactors = F)
-)
 imp_data$agg_level[imp_data$agg_level == '99'] <- '99.'
 ```
 
@@ -207,26 +195,79 @@ roc_data <- roc_auc_data %>%
     median_test_auc = median(te_auc),
     mean_test_auc = mean(te_auc),
     train_test_diff = mean(train_test_diff),
-    n_ex = n()
+    n_ex = n(),
+    mean_pr_auc = mean(pr_auc),
+    sd_pr_auc = sd(pr_auc),
+    mean_efron_r2 = mean(efron_r2),
+    sd_efron_r2 = sd(efron_r2)
   ) %>%
   mutate(
     ci_lower_roc_auc = mean_test_auc - 1.96 * sd_test_auc / sqrt(n_ex),
     ci_upper_roc_auc = mean_test_auc + 1.96 * sd_test_auc / sqrt(n_ex), 
+    ci_lower_pr_auc = mean_pr_auc - 1.96 * sd_pr_auc / sqrt(n_ex),
+    ci_upper_pr_auc = mean_pr_auc + 1.96 * sd_pr_auc / sqrt(n_ex),
+    ci_lower_r2 = mean_efron_r2 - 1.96 * sd_efron_r2 / sqrt(n_ex),
+    ci_upper_r2 = mean_efron_r2 + 1.96 * sd_efron_r2 / sqrt(n_ex), 
   ) %>%
-  select(-n_ex)
+  select(-c("n_ex", "sd_efron_r2", "sd_pr_auc"))
+
+roc_data_r <- roc_data %>%
+  select("cancer_type", "agg_level", "feat_group",
+         "min_test_auc", "sd_test_auc", "median_test_auc", "mean_test_auc", "train_test_diff", "ci_lower_roc_auc", "ci_upper_roc_auc",
+         "mean_pr_auc", "ci_lower_pr_auc", "ci_upper_pr_auc",
+         "mean_efron_r2", "ci_lower_r2", "ci_upper_r2"
+         ) %>%
+  setNames(c("Cancer type",	"Labeling type", "Feature group", "Min test ROC AUC",	"SD test ROC AUC",	"Median test ROC AUC",	
+             "Mean test ROC AUC", "Train-test difference ROC AUC", "Lower bound of confidence interval for mean test ROC AUC",	
+             "Upper bound of confidence interval for mean test ROC AUC", "Mean test PR AUC", 
+             "Lower bound of confidence interval for mean test PR AUC",	"Upper bound of confidence interval for mean test PR AUC",
+             "Mean test Efron pseudo-R2", "Lower bound of confidence interval for mean test Efron pseudo-R2",
+             "Upper bound of confidence interval for mean test Efron pseudo-R2"))
 
 # recall
 recall_stats_hsp <- ci_stats %>% 
   filter(quantile %in% c(0.001, 0.005, 0.01,0.02,0.03, 0.040, 0.050, 0.100)) %>%
   select(cancer_type, agg_level, feat_group, quantile, mean_recall, mean_precision, mean_lift_recall, ci_lower_lift_recall, ci_upper_lift_recall, mean_lift_precision, ci_lower_lift_precision,ci_upper_lift_precision)
 
-# save
+# save train_by_feature_group.xlsx
 # wb <- createWorkbook()
 # addWorksheet(wb, "ROC_AUC")
 # addWorksheet(wb, "Recall")
-# writeData(wb, sheet="ROC_AUC", roc_data)
+# writeData(wb, sheet="ROC_AUC", roc_data_r)
 # writeData(wb, sheet="Recall", recall_stats_hsp)
-# saveWorkbook(wb, "../reports/train_by_feature_group.xlsx", overwrite = T)
+# saveWorkbook(wb, "../data/output_third/reports/train_by_feature_group.xlsx", overwrite = T)
+
+
+# save S15 - hotspots - full feature set
+recall_stats <- recall_stats_hsp %>%
+  select(c("quantile", "cancer_type", "agg_level", "feat_group","mean_recall", "mean_lift_recall", "ci_lower_lift_recall",
+           "ci_upper_lift_recall",  "mean_precision","mean_lift_precision", "ci_lower_lift_precision", 
+           "ci_upper_lift_precision")) %>%
+  setNames(c("quantile", "Cancer type",		"Labeling type", "Feature group", "Mean recall",	"Mean lift of recall",
+  "Lower bound of confidence interval for mean lift of recall",	"Upper bound of confidence interval for mean  lift of recall",
+  "Mean precision",	"Mean lift of precision",	"Lower bound of confidence interval for mean lift of precision",
+  "Upper bound of confidence interval for mean  lift of precision"))
+
+rec_3 <- recall_stats[recall_stats$quantile == 0.03, ] %>% select(-quantile)
+rec_5 <- recall_stats[recall_stats$quantile == 0.05, ] %>% select(-quantile)
+
+q3 <- roc_data_r %>%
+  inner_join(
+    rec_3, by=c("Cancer type","Feature group", "Labeling type")
+  )
+q5 <- roc_data_r %>%
+  inner_join(
+    rec_5, by=c("Cancer type", "Feature group", "Labeling type")
+  )
+
+# wb <- createWorkbook()
+# addWorksheet(wb, "q3")
+# addWorksheet(wb, "q5")
+# 
+# writeData(wb, sheet="q3", q3)
+# writeData(wb, sheet="q5", q5)
+# 
+# saveWorkbook(wb, "../data/output_third/reports/s7.xlsx", overwrite = T)
 ```
 
 #### ROC AUC
@@ -319,7 +360,7 @@ recall_stats_hsp %>%
 #### ROC AUC
 
 ```{r}
-baseline_path <- '../reports/train_baseline.xlsx'
+baseline_path <- '../data/output_third/reports/train_baseline.xlsx'
 base_roc <- read.xlsx(baseline_path, sheet = "ROC_AUC_hotspots")
 base_rec <- read.xlsx(baseline_path, sheet = "Recall_hotspots")
 names(base_roc)[grep(x=names(base_roc), pattern = "auc")] <- paste0('base_', grep(x=names(base_roc), pattern = "auc", value = T))
@@ -329,7 +370,7 @@ names(base_rec)[grep(x=names(base_rec), pattern = "recall")] <- paste0('base_',
 names(base_rec)[grep(x=names(base_rec), pattern = "prec")] <- paste0('base_', 
                                                                        grep(x=names(base_rec), pattern = "prec", value = T))
 
-best_path <- '../reports/train_best_features_boruta_sign.xlsx'
+best_path <- '../data/output_third/reports/train_best_features_boruta_sign.xlsx'
 best_roc <- read.xlsx(best_path, sheet = "ROC_AUC_hotspots")
 best_rec <- read.xlsx(best_path, sheet = "Recall_hotspots")
 names(best_roc)[grep(x=names(best_roc), pattern = "auc")] <- paste0('best_', grep(x=names(best_roc), pattern = "auc", value = T))
@@ -625,16 +666,29 @@ recall_data <- recall_data %>%
   inner_join(proper_feature_group_names, by=c("feat_group" = "feature_group_name"))
 
 # baseline_data_path <- "../data/output/classifier_results/"
-baseline_data_path <- "../data/output/classifier_results_best_features_boruta_sign_all_agg_levels/"
+# baseline_data_path <- "../data/output/classifier_results_best_features_boruta_sign_all_agg_levels/"
+baseline_data_path <- "../data/output_third/classifier_results_best_features_boruta_sign_all_agg_levels/"
 roc_auc_data_base <- read.csv(paste0(baseline_data_path, "result_roc_auc_100000.csv"), row.names = 1, stringsAsFactors = F)
 recall_data_base <- read.csv(paste0(baseline_data_path, "result_recall_100000.csv"), row.names = 1, stringsAsFactors = F)
 
 roc_auc_data_base$feature_group_name_proper <- "all"
 recall_data_base$feature_group_name_proper <- "all"
 
+roc_auc_data <- roc_auc_data %>%
+  inner_join(
+    proper_feature_group_names %>% select(feature_group_name, feature_group_name_proper),
+    by=c("feat_group" ="feature_group_name")
+  )
+
+recall_data <- recall_data %>%
+  inner_join(
+    proper_feature_group_names %>% select(feature_group_name, feature_group_name_proper),
+    by=c("feat_group" ="feature_group_name")
+  )
+
 all_roc_auc_data <- rbind.data.frame(
-  roc_auc_data_base %>% select(cancer_type, agg_level, feature_group_name_proper, te_auc, tr_auc),
-  roc_auc_data %>% select(cancer_type, agg_level, feature_group_name_proper, te_auc, tr_auc)
+  roc_auc_data_base %>% select(cancer_type, agg_level, feature_group_name_proper, te_auc, tr_auc, pr_auc),
+  roc_auc_data %>% select(cancer_type, agg_level, feature_group_name_proper, te_auc, tr_auc, pr_auc)
 ) %>%
   mutate(
     auc_diff = tr_auc - te_auc
@@ -663,6 +717,17 @@ pl_values <- rbind.data.frame(
         metric = "Lift of recall"
       )
   )
+
+
+pl_values <- rbind.data.frame(
+  pl_values,
+  all_roc_auc_data %>%
+    select(cancer_type, agg_level, feature_group_name_proper, pr_auc) %>%
+    setNames(c("cancer_type", "agg_level", "feature_group_name_proper", "value")) %>%
+    mutate(
+      metric = "PR AUC"
+    )
+)
 
 agg <- pl_values %>%
   group_by(metric, cancer_type, agg_level, feature_group_name_proper) %>%
@@ -706,9 +771,12 @@ g1 <- ggplot(pl_values[pl_values$agg_level == agg_lev, ],
     axis.text.y = element_text(hjust = 1),
     legend.position="bottom", legend.title = element_text(size = 10),    
     )
+g1
+# ggsave(filename = "Fig3_main.tiff", plot = g1, device = "tiff", path = "../paper_third/", dpi = 600, units = "in", width = 5, height = 4, scale = 2, compression = "lzw")
+```
 
-# ggsave(filename = "Fig3_main.tiff", plot = g1, device = "tiff", path = "../paper_materials/plots_after_review/", dpi = 600, units = "in", width = 5, height = 3, scale = 2, compression = "lzw")
 
+```{r}
 
 agg_lev <- "99.5."
 
@@ -735,15 +803,36 @@ g1 <- ggplot(pl_values[pl_values$agg_level == agg_lev, ],
     legend.position="bottom", legend.title = element_text(size = 10),    
     )
 g1
-# ggsave(filename = "Fig9_supp.tiff", plot = g1, device = "tiff", path = "../paper_materials/plots_after_review/", dpi = 600, units = "in", width = 5, height = 3, scale = 2, compression = "lzw")
+# ggsave(filename = "Fig9_supp.tiff", plot = g1, device = "tiff", path = "../paper_third/", dpi = 600, units = "in", width = 5, height = 4, scale = 2, compression = "lzw")
 ```
-
 
 ```{r}
-g1
+agg_lev <- "99."
+
+pl_values[pl_values$agg_level == agg_lev, ] %>%
+  group_by(cancer_type, feature_group_name_proper, metric) %>%
+  summarize(
+    val = median(value),
+    r = median(r)
+  ) %>%
+  filter(metric == "PR AUC") %>%
+  arrange(cancer_type, desc(r))
+
 ```
 
+```{r}
+agg_lev <- "99."
 
+pl_values[pl_values$agg_level == agg_lev, ] %>%
+  group_by(cancer_type, feature_group_name_proper, metric) %>%
+  summarize(
+    val = median(value),
+    r = median(r)
+  ) %>%
+  filter(metric == "PR AUC") %>%
+  filter(r==max(r)) %>%
+  arrange(desc(val))
+```
 
 ### Feature importance inside groups
 

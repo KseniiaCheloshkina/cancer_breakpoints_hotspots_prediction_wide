@@ -22,7 +22,7 @@ library(openxlsx)
 source("../run/tools.R")
 win_len <- 100000
 
-data_path <- "../data/output/classifier_results/"
+data_path <- "../data/output_third/classifier_results/"
 roc_auc_data <- read.csv(paste0(data_path, "result_roc_auc_100000.csv"), row.names = 1, stringsAsFactors = F)
 recall_data <- read.csv(paste0(data_path, "result_recall_100000.csv"), row.names = 1, stringsAsFactors = F)
 imp_data <- read.csv(paste0(data_path, "result_imp_100000.csv"), row.names = 1, stringsAsFactors = F)
@@ -751,13 +751,21 @@ roc_data <- roc_auc_data %>%
     median_test_auc = median(te_auc),
     mean_test_auc = mean(te_auc),
     train_test_diff = mean(train_test_diff),
-    n_ex = n()
+    n_ex = n(),
+    mean_pr_auc = mean(pr_auc),
+    sd_pr_auc = sd(pr_auc),
+    mean_efron_r2 = mean(efron_r2),
+    sd_efron_r2 = sd(efron_r2)
   ) %>%
   mutate(
     ci_lower_roc_auc = mean_test_auc - 1.96 * sd_test_auc / sqrt(n_ex),
     ci_upper_roc_auc = mean_test_auc + 1.96 * sd_test_auc / sqrt(n_ex), 
+    ci_lower_pr_auc = mean_pr_auc - 1.96 * sd_pr_auc / sqrt(n_ex),
+    ci_upper_pr_auc = mean_pr_auc + 1.96 * sd_pr_auc / sqrt(n_ex),
+    ci_lower_r2 = mean_efron_r2 - 1.96 * sd_efron_r2 / sqrt(n_ex),
+    ci_upper_r2 = mean_efron_r2 + 1.96 * sd_efron_r2 / sqrt(n_ex), 
   ) %>%
-  select(-n_ex)
+  select(-c("n_ex", "sd_efron_r2", "sd_pr_auc"))
 
 # recall
 recall_stats_hsp <- ci_stats %>% 
@@ -770,7 +778,7 @@ recall_stats_bkpt <- ci_stats_bkpt %>%
   select(cancer_type, quantile, mean_recall, mean_lift_recall, ci_lower_lift_recall, ci_upper_lift_recall,
          mean_precision)
 
-# save
+# save all stats
 # wb <- createWorkbook()
 # addWorksheet(wb, "ROC_AUC_hotspots")
 # addWorksheet(wb, "ROC_AUC_breakpoints")
@@ -783,17 +791,122 @@ recall_stats_bkpt <- ci_stats_bkpt %>%
 # writeData(wb, sheet="Recall_hotspots", recall_stats_hsp)
 # writeData(wb, sheet="Recall_breakpoints", recall_stats_bkpt)
 # 
-# saveWorkbook(wb, "../reports/train_baseline.xlsx", overwrite = T)
+# saveWorkbook(wb, "../data/output_third/reports/train_baseline.xlsx", overwrite = T)
+
+
+roc_data <- roc_data %>%
+  select("cancer_type", "agg_level", 
+         "min_test_auc", "sd_test_auc", "median_test_auc", "mean_test_auc", "train_test_diff", "ci_lower_roc_auc", "ci_upper_roc_auc",
+         "mean_pr_auc", "ci_lower_pr_auc", "ci_upper_pr_auc",
+         "mean_efron_r2", "ci_lower_r2", "ci_upper_r2"
+         ) %>%
+  setNames(c("Cancer type",	"Labeling type", "Min test ROC AUC",	"SD test ROC AUC",	"Median test ROC AUC",	
+             "Mean test ROC AUC", "Train-test difference ROC AUC", "Lower bound of confidence interval for mean test ROC AUC",	
+             "Upper bound of confidence interval for mean test ROC AUC", "Mean test PR AUC", 
+             "Lower bound of confidence interval for mean test PR AUC",	"Upper bound of confidence interval for mean test PR AUC",
+             "Mean test Efron pseudo-R2", "Lower bound of confidence interval for mean test Efron pseudo-R2",
+             "Upper bound of confidence interval for mean test Efron pseudo-R2"))
+
+best_agg_lev_q <- best_agg_lev_q %>%
+  setNames(c("Cancer type",	"Labeling type"))
+best_agg_lev_q$`Cancer type` <- as.character(best_agg_lev_q$`Cancer type`)
+best_agg_lev_q$`Labeling type` <- as.character(best_agg_lev_q$`Labeling type`)
+best_agg_lev_q <- best_agg_lev_q %>%
+  mutate("m" = 1)
+roc_data_hsp <- roc_data %>% inner_join(best_agg_lev_q, by = c("Cancer type", "Labeling type"))
+roc_data_hsp$m <- NULL
+roc_data_bkpt <- roc_data %>% filter(`Labeling type` == "all")
+
+# save S15 - hotspots - full feature set
+recall_stats <- recall_stats_hsp %>%
+  select(c("quantile", "cancer_type", "agg_level", "mean_recall", "mean_lift_recall", "ci_lower_lift_recall",
+           "ci_upper_lift_recall",  "mean_precision","mean_lift_precision", "ci_lower_lift_precision", 
+           "ci_upper_lift_precision")) %>%
+  setNames(c("quantile", "Cancer type",		"Labeling type", "Mean recall",	"Mean lift of recall",
+  "Lower bound of confidence interval for mean lift of recall",	"Upper bound of confidence interval for mean  lift of recall",
+  "Mean precision",	"Mean lift of precision",	"Lower bound of confidence interval for mean lift of precision",
+  "Upper bound of confidence interval for mean  lift of precision"))
+
+rec_3 <- recall_stats[recall_stats$quantile == 0.03, ] %>% select(-quantile)
+rec_5 <- recall_stats[recall_stats$quantile == 0.05, ] %>% select(-quantile)
+
+q3 <- roc_data_hsp %>%
+  inner_join(
+    rec_3, by=c("Cancer type","Labeling type")
+  )
+q5 <- roc_data_hsp %>%
+  inner_join(
+    rec_5, by=c("Cancer type", "Labeling type")
+  )
+
+# wb <- createWorkbook()
+# addWorksheet(wb, "q3")
+# addWorksheet(wb, "q5")
+# 
+# writeData(wb, sheet="q3", q3)
+# writeData(wb, sheet="q5", q5)
+# 
+# saveWorkbook(wb, "../data/output_third/reports/s15.xlsx", overwrite = T)
+
+
+# save S9 - breakpoints - full feature set
+recall_stats <- recall_stats_bkpt %>%
+  select(c("quantile", "cancer_type",  "mean_recall", "mean_lift_recall", "ci_lower_lift_recall",
+           "ci_upper_lift_recall",  "mean_precision")) %>%
+  setNames(c("quantile", "Cancer type", "Mean recall",	"Mean lift of recall",
+  "Lower bound of confidence interval for mean lift of recall",	"Upper bound of confidence interval for mean  lift of recall",
+  "Mean precision"))
+
+rec_3 <- recall_stats[recall_stats$quantile == 0.03, ] %>% select(-quantile)
+rec_5 <- recall_stats[recall_stats$quantile == 0.05, ] %>% select(-quantile)
+roc_data_bkpt$`Labeling type` <- NULL
+q3 <- roc_data_bkpt %>%
+  inner_join(
+    rec_3, by=c("Cancer type")
+  )
+q5 <- roc_data_bkpt %>%
+  inner_join(
+    rec_5, by=c("Cancer type")
+  )
+
+# wb <- createWorkbook()
+# addWorksheet(wb, "q3")
+# addWorksheet(wb, "q5")
+# 
+# writeData(wb, sheet="q3", q3)
+# writeData(wb, sheet="q5", q5)
+# 
+# saveWorkbook(wb, "../data/output_third/reports/s9.xlsx", overwrite = T)
+
+
 ```
 
 
 ```{r}
-g_f <- ggarrange(g1, g3,  
-          labels = c("A", "B"),
-          ncol = 1, nrow = 2, heights = c(1, 2),
-          font.label = list(size = 10, color = "black", face ="bold"))
-g_f
-ggsave(filename = "Fig12_supp.tiff", plot = g_f, device = "tiff", path = "../paper_materials/plots_after_review/",
-       dpi = 600, units = "in", width = 6, height = 8, scale = 2, compression = "lzw")
+all_features_data <- roc_auc_data %>%
+  filter(feat_group == "all") %>%
+  filter(agg_level != "all")
+
+g2 <- ggplot(all_features_data, aes(y=pr_auc, fill=agg_level)) +
+  geom_boxplot()+
+  facet_wrap(~ cancer_type, nrow = 2) +
+  scale_fill_jco() + 
+  xlab("")+
+  ylab("Test PR AUC")+
+  labs(fill = "Labeling type")+
+  theme_light_custom()
+g2
 ```
 
+
+
+
+```{r}
+g_f <- ggarrange(g1, g2, g3,  
+          labels = c("A", "B", "C"),
+          ncol = 1, nrow = 3, heights = c(1, 1, 2),
+          font.label = list(size = 10, color = "black", face ="bold"))
+g_f
+# ggsave(filename = "Fig13_supp.tiff", plot = g_f, device = "tiff", path = "../paper_third/",
+#        dpi = 600, units = "in", width = 6, height = 8, scale = 2, compression = "lzw")
+```

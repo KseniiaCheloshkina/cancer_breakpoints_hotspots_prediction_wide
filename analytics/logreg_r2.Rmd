@@ -1,0 +1,110 @@
+---
+title: "Log reg Pseudo R2"
+output:
+  html_notebook: default
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+```{r "loading data", echo=F}
+library(ggplot2)
+library(ggsci)
+library(wesanderson)
+library(ggpubr)
+
+library(dplyr)
+library(reshape2)
+
+library(formattable)
+
+library(openxlsx)
+source("../run/tools.R")
+win_len <- 100000
+
+data_path <- "../data/output_third/classifier_results_best_features_boruta_sign_all_lr/"
+combined_r2_data <- read.csv(paste0(data_path, "result_r2_100000.csv"), row.names = 1, stringsAsFactors = F)
+combined_r2_data$feature_group_name_proper <- "all"
+
+data_path <- "../data/output_third/classifier_results_by_feature_group/log_reg/"
+feat_r2_data <- read.csv(paste0(data_path, "result_r2_100000.csv"), row.names = 1, stringsAsFactors = F)
+
+feat_r2_data <- feat_r2_data %>%
+  inner_join(
+    proper_feature_group_names %>% select(feature_group_name, feature_group_name_proper),
+    by=c("feat_group"="feature_group_name")
+    ) %>%
+  select(-feat_group)
+
+data <- rbind.data.frame(
+  feat_r2_data,
+  combined_r2_data
+)
+  
+```
+
+
+Find median values
+
+
+```{r}
+med_data <- data %>%
+  group_by(cancer_type, win_len, agg_level, feature_group_name_proper) %>%
+  summarize(
+    med_mcfadden_r2 = median(mcfadden_r2),
+    med_efron_r2 = median(efron_r2)
+  )
+med_data %>%
+  filter(agg_level != "99.9.") %>%
+  group_by(cancer_type) %>%
+  filter(med_mcfadden_r2 == max(med_mcfadden_r2)) %>%
+  arrange(desc(med_mcfadden_r2))
+```
+
+```{r}
+feat_colors <- c(as.character(proper_feature_group_names$colors), "#4A6990")
+names(feat_colors) <- c(as.character(proper_feature_group_names$feature_group_name_proper), "all")
+
+
+g1 <- ggplot(med_data[med_data$agg_level != "99.9.", ], 
+             aes(
+               x=agg_level, y=med_mcfadden_r2, fill=feature_group_name_proper)
+             ) + 
+  geom_bar(stat="identity", position="dodge") +
+  facet_wrap(~cancer_type, scales="free", nrow = 2)+
+  # theme_light_custom()
+  theme_light()+
+  scale_fill_jco()+
+  xlab("Feature group")+
+  ylab("Median McFadden's R-squared") +
+  scale_fill_manual(values = feat_colors)+
+  labs(fill = "Feature group")+
+  theme(
+    axis.title.x=element_blank(),
+    # axis.text.x=element_blank(),
+    axis.ticks.x=element_blank(),
+    text = element_text(size = 9, family = "sans"),
+    axis.title.y = element_text(size = 10),
+    axis.text.y = element_text(hjust = 1),
+    legend.position="bottom", legend.title = element_text(size = 10),
+    )
+g1
+# ggsave(filename = "Fig_new_r2.tiff", plot = g1, device = "tiff", path = "../paper_third/", dpi = 600, units = "in", width = 5, height = 3, scale = 2, compression = "lzw")
+```
+
+
+```{r}
+# save results
+
+df_final <- med_data[med_data$agg_level != "99.9.", ] %>%
+  ungroup() %>%
+  select(cancer_type, agg_level, feature_group_name_proper, med_mcfadden_r2) %>%
+  setNames(c("Cancer type", "Labeling type", "Feature group", "Median test McFadden's R-squared"))
+
+# wb <- createWorkbook()
+# addWorksheet(wb, "r2_logreg")
+# writeData(wb, sheet="r2_logreg", df_final)
+# saveWorkbook(wb, "../data/output_third/reports/s_new_r2.xlsx", overwrite = T)
+
+```
+

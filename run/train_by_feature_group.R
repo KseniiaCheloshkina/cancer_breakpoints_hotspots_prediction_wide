@@ -1,3 +1,6 @@
+# https://stats.idre.ucla.edu/other/mult-pkg/faq/general/faq-what-are-pseudo-r-squareds/
+# https://thestatsgeek.com/2014/02/08/r-squared-in-logistic-regression/
+# https://www3.nd.edu/~rwilliam/xsoc73994/L05.pdf
 script_path <- dirname(rstudioapi::getSourceEditorContext()$path)
 setwd(script_path)
 setwd('..')
@@ -11,6 +14,7 @@ library(doParallel)
 library(caret)
 library(randomForest)
 library(pROC)
+library(PRROC)
 
 source("run/features.R")
 source("run/tools.R")
@@ -29,7 +33,9 @@ data_path <- "data/datasets/"
 data <- read.csv(
   paste0(data_path, "dataset_", format(win_len, scientific = FALSE), ".csv")
 )
-output_path <- "data/output/classifier_results_by_feature_group/" 
+data$X <- NULL
+output_path <- "data/output_third/classifier_results_by_feature_group/" 
+output_path_lr <- "data/output_third/classifier_results_by_feature_group/log_reg/" 
 
 hsp_cols <- grep(x = names(data), pattern = "hsp", value = TRUE)
 
@@ -171,6 +177,7 @@ n_repeats <- 30
 
 
 # for storing results
+df_r2_all <- data.frame()
 df_roc_auc_all <- data.frame()
 df_imp_all <- data.frame()
 df_recall_all <- data.frame()
@@ -182,7 +189,7 @@ recall_quantiles <- c(0.001, 0.005, 0.002,  0.003, 0.015, 0.025, seq(0.01, 0.05,
 
 # predict only hotspots
 hsp_cols <- hsp_cols[-grep(hsp_cols, pattern = "all")]
-hsp_cols <- hsp_cols[hsp_cols != "hsp_99._blood"]
+
 
 # set progress bar
 n_iterations <- length(hsp_cols)
@@ -190,7 +197,6 @@ pb <- progress_bar$new(
   format = "  Modeling [:bar] :percent. Elapsed: :elapsedfull ETA: :eta",
   total = n_iterations, clear = FALSE, width=120)
 pb$tick(0)
-
 
 for (target_column in hsp_cols){
   
@@ -268,6 +274,10 @@ for (target_column in hsp_cols){
       model_qual <- get_model_quality(train_pred, test_pred, model, recall_quantiles)
       model_qual[['features_group']] <- features_gr
       
+      # fit log reg and calculate pseudo r2
+      r2_vec <- get_log_reg_metrics(x_train[features_nm], y_train, x_test[features_nm], y_test)
+      model_qual[['log_reg']] <- r2_vec
+      
       feat_iter_res[[j]] <- model_qual  
     }
     
@@ -315,16 +325,26 @@ for (target_column in hsp_cols){
           win_len = format(win_len, scientific = F)
         )
       
+      df_r2 <- res_iter[['log_reg']] %>%
+        mutate(
+          iter = split_iter,
+          feat_group = feat_gr_nm_current,
+          cancer_type = cancer_type,
+          agg_level = agg_level,
+          win_len = format(win_len, scientific = F)
+        )
+      
       df_roc_auc_all <- rbind(df_roc_auc_all, df_roc_auc)
       df_imp_all <- rbind(df_imp_all, df_imp)
       df_recall_all <- rbind(df_recall_all, df_recall)
+      df_r2_all <- rbind(df_r2_all, df_r2)
     }  
   }
   
   write.csv(df_roc_auc_all, file = paste0(output_path, "result_roc_auc_", format(win_len, scientific = F), ".csv"))
   write.csv(df_imp_all, file = paste0(output_path, "result_imp_", format(win_len, scientific = F), ".csv"))
   write.csv(df_recall_all, file = paste0(output_path, "result_recall_", format(win_len, scientific = F), ".csv"))
-  
+  write.csv(df_r2_all, file = paste0(output_path_lr, "result_r2_", format(win_len, scientific = F), ".csv"))
   pb$tick()
 }
 

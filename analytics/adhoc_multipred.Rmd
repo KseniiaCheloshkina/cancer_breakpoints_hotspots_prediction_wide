@@ -1,0 +1,338 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+library(dplyr)
+library(reshape2)
+library(ggplot2)
+library(wesanderson)
+library(ggpubr)
+library(ggsci)
+pal <- wes_palette("Zissou1", 100, type = "continuous")
+
+source("../run/tools.R")
+```
+
+
+```{r}
+output_path <- "../data/output/classifier_results_by_feature_group_predictions/" 
+data <- read.csv(paste0(output_path, "result_pred_100000.csv"))
+data_0 <- read.csv(paste0(output_path, "result_pred_100000_0.csv"))
+data <- rbind(data, data_0)
+rm(data_0)
+```
+
+
+
+### Mean correlation between predictions
+
+```{r}
+# Calculations
+
+get_corr_table <- function(df, y){
+  df1 <- df %>%
+    select(X1, features_group, rn) %>%
+    dcast(rn ~ features_group, value.var = "X1") %>%
+    select(-rn) %>%
+    cor(method="spearman") %>%
+    melt() %>%
+    mutate(
+      spearman_corr = if_else(is.na(value), 0, value)
+    ) %>%
+    select(-value)
+  return(df1)
+}
+
+grouped_corr <- data %>%
+  group_by(cancer_type, agg_level, win_len, repeats) %>%
+  group_modify(get_corr_table)
+```
+
+Mean in 30 repeats
+
+```{r}
+# write.csv(grouped_corr, "../data/adhoc/multipred_corr.csv")
+grouped_corr <- read.csv("../data/adhoc/multipred_corr.csv")
+
+mean_corr <- grouped_corr %>%
+  group_by(cancer_type, agg_level, win_len, Var1, Var2) %>%
+  summarize(
+    mean_spearman_corr = mean(spearman_corr),
+    median_spearman_corr = median(spearman_corr)
+    ) %>%
+  inner_join(
+    proper_feature_group_names %>% select(feature_group_name, feature_group_name_proper), by=c("Var1"="feature_group_name")
+  ) %>%
+  rename("Var1_fg"="feature_group_name_proper") %>%
+  inner_join(
+    proper_feature_group_names %>% select(feature_group_name, feature_group_name_proper), by=c("Var2"="feature_group_name")
+  ) %>%
+  rename("Var2_fg"="feature_group_name_proper")
+
+mean_corr$Var1_fg <- factor(mean_corr$Var1_fg, levels = c("TAD", "TF", "DNase", "HM", "methyl", "non-B DNA","region")) 
+mean_corr$Var2_fg <- factor(mean_corr$Var2_fg, levels = c("TAD", "TF", "DNase", "HM", "methyl", "non-B DNA","region")) 
+
+g1 <- ggplot(mean_corr %>% filter(agg_level == "99.") %>% filter(Var1_fg != Var2_fg), aes(x=Var1_fg, y=Var2_fg, fill=mean_spearman_corr))+
+  geom_tile() + 
+  facet_wrap(~cancer_type, nrow=2) +
+  scale_fill_gradientn(colours = pal)+
+  xlab("Feature group") + 
+  ylab("Feature group") +
+  theme_light()+
+  labs(fill = "Spearman correlation")+
+  theme(
+    legend.position = "bottom",
+    legend.title = element_text(hjust = 0, size = 10),
+    axis.text.x = element_text(angle = 40, hjust = 1, size=8),
+    axis.text.y = element_text(size=8)
+    )+
+  scale_x_discrete(limits=c("TAD", "DNase", "TF",  "HM", "methyl", "non-B DNA","region")) +
+  scale_y_discrete(limits=c("region",  "non-B DNA", "methyl" , "HM", "TF","DNase", "TAD"))
+
+g1
+```
+
+
+Additionally it is of interest here to investigate whether the different feature group models identify the same or different breakpoints hotspots regions. Firstly, we calculated mean Spearman correlation between predictions for each pair of feature groups (Fig.). 
+
+```{r}
+mean_corr$gr <- paste(mean_corr$Var1_fg, mean_corr$Var2_fg, sep="_")
+mean_corr %>% 
+  filter(Var1_fg != Var2_fg) %>%
+  group_by(gr) %>%
+  summarize(mc = mean(mean_spearman_corr)) %>%
+  arrange(desc(mc))
+```
+
+
+The highest mean over all cancer types correlation is observed for histones modifications based models predictions that are positively associated with TF and methylation based models predictions (with correlation of 0.47 and 0.46 respectively). 
+On opposite, TAD-based models generate the most specific predictions with maximal correlation of 0.045 with TF-based predictions.
+
+
+```{r}
+mean_corr %>% filter(Var1_fg != Var2_fg) %>%
+  group_by(cancer_type, gr) %>%
+  summarize(mc = mean(mean_spearman_corr)) %>%
+  mutate(r = dense_rank(desc(mc))) %>%
+  filter(r == 1) %>%
+  arrange(r, desc(mc))
+```
+
+### Intersection
+
+```{r}
+get_recall <- function(test_pred, y){
+  n <- round(nrow(test_pred) * 0.05)
+  df1 <- test_pred %>%
+    select(X1, rn) %>%
+    arrange(desc(X1)) %>%
+    mutate(
+      label = if_else(row_number() <= n, 1, 0)
+    ) %>%
+    filter(
+      label == 1
+    ) %>%
+    select(rn, label)
+
+  return(df1)
+}
+
+grouped_pred <- data %>%
+  group_by(cancer_type, agg_level, win_len, repeats, features_group) %>%
+  group_modify(get_recall)
+# write.csv(grouped_pred, "../data/adhoc/multipred_pred.csv")
+
+all_targets <- data %>%
+  filter(target == "X1") %>%
+  select(cancer_type, agg_level, win_len, repeats, rn, target) %>%
+  unique()
+all_targets$target <- 1
+write.csv(all_targets, "../data/adhoc/multipred_targets.csv")
+
+# rm(data)
+```
+
+```{r}
+grouped_pred_0 <- read.csv("../data/adhoc/multipred_pred.csv")
+all_targets <- read.csv("../data/adhoc/multipred_targets.csv")
+
+gr <- unique(grouped_pred_0$features_group)
+grouped_pred <- grouped_pred_0 %>%
+  dcast(cancer_type + agg_level + win_len + repeats + rn ~ features_group, value.var = "label")
+
+# drop tad predictions
+grouped_pred$tad <- NULL
+gr <- setdiff(gr, c("tad"))
+
+grouped_pred <- grouped_pred %>%
+  left_join(all_targets, by=c("cancer_type", "agg_level", "win_len", "repeats", "rn"))
+grouped_pred[is.na(grouped_pred)] <- 0
+
+grouped_pred$total_pred <- rowSums(grouped_pred[as.character(gr)])
+grouped_pred
+
+grouped_pred_summary <- grouped_pred %>%
+  filter(total_pred > 0) %>%
+  group_by(cancer_type, agg_level, win_len, repeats, total_pred) %>%
+  summarize(
+    n_preds = n(),
+    n_hsp = sum(target)
+    ) %>%
+  mutate(
+    ratio = n_hsp / n_preds
+  )
+
+```
+
+
+### Effect of combined predictiona
+
+```{r}
+grouped_pred_summary %>%
+ group_by(total_pred) %>%
+  summarize(mean(n_preds))
+```
+
+
+```{r}
+grouped_pred_summary_plot <- grouped_pred_summary %>%
+  filter(total_pred < 4)
+grouped_pred_summary_plot$total_pred <- as.character(grouped_pred_summary_plot$total_pred)
+grouped_pred_summary_plot <- grouped_pred_summary_plot[grouped_pred_summary_plot$agg_level == "99.", ]
+
+mean_preds = grouped_pred_summary_plot %>%
+  group_by(cancer_type, total_pred) %>%
+  summarize(
+    mean_n_preds = round(mean(n_preds), 0),
+    m_r = max(ratio)
+    )
+mean_preds
+```
+
+```{r}
+grouped_pred_single <- grouped_pred %>%
+  filter(total_pred == 1) %>%
+  select(-c("total_pred"))
+
+grouped_pred_single <- melt(
+  data=grouped_pred_single, 
+  id.vars=c("cancer_type", "agg_level", "win_len", "repeats", "rn","target")
+  ) %>%
+  rename("feature_group"="variable") %>%
+  filter(value==1) %>%
+  group_by(cancer_type, agg_level, win_len, repeats, feature_group) %>%
+  summarize(
+    n_preds = sum(value),
+    n_hsp = sum(target)
+    ) %>%
+  mutate(
+    ratio = n_hsp / n_preds
+  ) 
+
+grouped_pred_single_st <- grouped_pred_single  %>%
+  group_by(cancer_type, agg_level, win_len, feature_group) %>%
+  summarize(
+    ratio = mean(ratio),
+    mean_n_preds = round(mean(n_preds), 0)
+  ) %>%
+  group_by(cancer_type, agg_level, win_len) %>%
+  mutate(rank_ratio = dense_rank(desc(ratio))) %>%
+  filter(rank_ratio == min(rank_ratio)) %>%
+  select(-c("rank_ratio", "ratio"))
+
+grouped_pred_single_best <- grouped_pred_single %>%
+  inner_join(grouped_pred_single_st %>% select(-c("mean_n_preds")), by=c("cancer_type", "win_len", "feature_group", "agg_level")) %>%
+  mutate(total_pred = "1")
+
+grouped_pred_single_st <- grouped_pred_single_st %>%
+  inner_join(
+    grouped_pred_single_best %>%
+      group_by(cancer_type, agg_level, win_len, feature_group) %>%
+      summarize(m_r = max(ratio)) %>%
+      ungroup() %>%
+      select(-c("feature_group"))
+  )
+grouped_pred_single_st
+```
+
+```{r}
+one_group_ratio <- grouped_pred_0 %>%
+  left_join(all_targets %>% select(-X), by=c("cancer_type", "agg_level", "win_len", "repeats", "rn")) %>%
+  mutate(
+    target = if_else(is.na(target), 0, 1)
+  ) %>%
+  group_by(cancer_type, agg_level, win_len, repeats, features_group) %>%
+  summarize(
+    n_preds = sum(label),
+    n_hsp = sum(target)
+    ) %>%
+  mutate(
+    ratio = n_hsp / n_preds
+  ) 
+
+one_group_ratio_st <- one_group_ratio %>%
+  group_by(cancer_type, agg_level, win_len, features_group) %>%
+  summarize(
+    ratio = mean(ratio)
+  ) %>%
+  filter(ratio == max(ratio))
+
+one_group_ratio_best <- 
+  one_group_ratio %>%
+  inner_join(
+    one_group_ratio_st %>% select(-ratio)
+    ) %>%
+  mutate(total_pred = "1")
+
+```
+
+
+```{r}
+tot_pl <- rbind(
+  grouped_pred_summary_plot %>% filter(total_pred != "1", agg_level == "99."),
+  one_group_ratio_best %>% filter(agg_level == "99.")
+)
+
+tot_annot <- rbind.data.frame(
+  one_group_ratio_best %>% 
+    group_by(agg_level, win_len, cancer_type) %>%
+    summarize(m_r = max(ratio)) %>%
+    filter(agg_level == "99.") %>%
+    ungroup() %>%
+    select(-c("win_len", "agg_level")) %>%
+    mutate(
+      total_pred = "1",
+      mean_n_preds=439
+      ),
+  mean_preds %>% filter(total_pred != "1")
+)
+
+g2 <- ggplot(tot_pl, 
+  aes(x=total_pred, fill = total_pred,  y=ratio)) + 
+  geom_boxplot() +
+  theme_light()+
+  facet_wrap(~cancer_type, scales="free", nrow=2)+
+  xlab("Number of feature groups") + 
+  ylab("Ratio of hotspots") +
+  labs(fill = "Number of feature groups")+
+  geom_text(data = tot_annot, aes(x = total_pred,  y=m_r + 0.01, label = mean_n_preds), size=3)+
+  scale_fill_jco()+
+  theme(
+      legend.position = "bottom",
+      legend.title = element_text(hjust = 0, size = 10),
+  )
+
+g2
+
+g_f <- ggarrange(g1, g2,
+          labels = c("A", "B"),
+          ncol = 1, nrow = 2, heights = c(1, 1),
+          font.label = list(size = 10, color = "black", face ="bold"))
+g_f
+
+# ggsave(filename = "Fig15_supp.tiff", plot = g_f, device = "tiff", path = "../paper_materials/plots_after_review/", dpi = 600, units = "in", width = 6, height = 5, scale = 2, compression = "lzw")
+```
+

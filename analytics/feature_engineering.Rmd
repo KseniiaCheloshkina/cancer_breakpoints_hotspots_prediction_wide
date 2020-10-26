@@ -14,9 +14,13 @@ library(ggsci)
 
 library(formattable)
 source("../run/tools.R")
+```
+
+```{r}
 all_results <- read.csv(file = "../data/output/feature_engineering.csv")
 all_results$diff_auc <- all_results$tr_auc - all_results$te_auc
 ```
+
 
 ### Analysis of addition of new features to base features
 
@@ -166,3 +170,78 @@ g_f
 ggsave(filename = "Fig10_supp.tiff", plot = g_f, device = "tiff", path = "../paper_materials/plots_after_review/", dpi = 600, units = "in", width = 5, height = 3, scale = 2, compression = "lzw")
 
 ```
+
+
+
+### RECALL AND PRECISION UPLIFT
+
+
+```{r}
+df_recall_all <- read.csv("../data/output/recall_feature_engineering_breast.csv")
+```
+
+```{r}
+all_results_reshaped <- dcast(data = df_recall_all, formula = iter + quantile + cancer_type ~ feat_group, value.var = "recall")
+
+for (col in c( "base_with_binary_flags" , "base_with_higher_level_feats", "base_with_maximums")){
+  all_results_reshaped <- all_results_reshaped %>%
+    mutate(!!as.name(paste0(col, "_diff")) := !!as.name(col) - base)
+}
+all_results_reshaped_plot <- melt(
+  data = all_results_reshaped, 
+  id.vars = c("cancer_type", "iter", "quantile"), 
+  measure.vars = c( "base_with_binary_flags_diff" ,
+                    "base_with_higher_level_feats_diff", "base_with_maximums_diff"))
+
+all_results_reshaped_plot$variable1[all_results_reshaped_plot$variable == "base_with_higher_level_feats_diff"] <- "local and distant"
+all_results_reshaped_plot$variable1[all_results_reshaped_plot$variable == "base_with_maximums_diff"] <- "local and maximums"     
+all_results_reshaped_plot$variable1[all_results_reshaped_plot$variable == "base_with_binary_flags_diff"] <- "local and binary"     
+
+g3 <- ggplot(all_results_reshaped_plot %>% filter(quantile == 0.03), aes(value, fill=variable1)) +
+  geom_histogram(alpha = 0.6, position = "dodge") +
+  geom_vline(xintercept = 0) + 
+  xlab("Difference in recall") + 
+  ylab("Density") +
+  labs(fill = "Feature set")+
+  theme_light_custom()
+g3
+```
+
+
+```{r}
+all_results_reshaped <- dcast(data = df_recall_all, formula = iter + quantile + cancer_type ~ feat_group, value.var = "precision")
+
+for (col in c( "base_with_binary_flags" , "base_with_higher_level_feats", "base_with_maximums")){
+  all_results_reshaped <- all_results_reshaped %>%
+    mutate(!!as.name(paste0(col, "_diff")) := !!as.name(col) - base)
+}
+all_results_reshaped_plot <- melt(
+  data = all_results_reshaped, 
+  id.vars = c("cancer_type", "iter", "quantile"), 
+  measure.vars = c( "base_with_binary_flags_diff" ,
+                    "base_with_higher_level_feats_diff", "base_with_maximums_diff"))
+
+all_results_reshaped_plot$variable1[all_results_reshaped_plot$variable == "base_with_higher_level_feats_diff"] <- "local and distant"
+all_results_reshaped_plot$variable1[all_results_reshaped_plot$variable == "base_with_maximums_diff"] <- "local and maximums"     
+all_results_reshaped_plot$variable1[all_results_reshaped_plot$variable == "base_with_binary_flags_diff"] <- "local and binary"     
+
+g4 <- ggplot(all_results_reshaped_plot %>% filter(quantile == 0.03), aes(value, fill=variable1)) +
+  geom_histogram(alpha = 0.6, position = "dodge") +
+  geom_vline(xintercept = 0) + 
+  xlab("Difference in precision") + 
+  ylab("Density") +
+  labs(fill = "Feature set")+
+  theme_light_custom()
+g4
+```
+
+```{r}
+g_f <- ggarrange(g3, g4,
+          labels = c("A", "B"),
+          ncol = 2, nrow = 1,
+          font.label = list(size = 10, color = "black", face ="bold")
+          )
+g_f
+# ggsave(filename = "Fig_reviewer.tiff", plot = g_f, device = "tiff", path = "../paper/", dpi = 600, units = "in", width = 5, height = 2, scale = 2, compression = "lzw")
+```
+

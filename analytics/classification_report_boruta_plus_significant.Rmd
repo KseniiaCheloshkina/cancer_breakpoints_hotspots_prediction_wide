@@ -26,57 +26,62 @@ win_len <- 100000
 
 ### get final results data
 
-# for almost all cancer types
-main_res_path <- "../data/output/classifier_results_best_features/"
-roc_auc_data <- read.csv(paste0(main_res_path, "result_roc_auc_100000.csv"), row.names = 1, stringsAsFactors = F)
-recall_data <- read.csv(paste0(main_res_path, "result_recall_100000.csv"), row.names = 1, stringsAsFactors = F)
-roc_auc_data_main <- roc_auc_data[!roc_auc_data$cancer_type %in% c("breast", "pancreatic", "prostate"), ]
-recall_data_main <- recall_data[!recall_data$cancer_type %in% c("breast", "pancreatic", "prostate"), ]
+# # for almost all cancer types
+# main_res_path <- "../data/output/classifier_results_best_features/"
+# roc_auc_data <- read.csv(paste0(main_res_path, "result_roc_auc_100000.csv"), row.names = 1, stringsAsFactors = F)
+# recall_data <- read.csv(paste0(main_res_path, "result_recall_100000.csv"), row.names = 1, stringsAsFactors = F)
+# roc_auc_data_main <- roc_auc_data[!roc_auc_data$cancer_type %in% c("breast", "pancreatic", "prostate"), ]
+# recall_data_main <- recall_data[!recall_data$cancer_type %in% c("breast", "pancreatic", "prostate"), ]
+# 
+# # for pancreatic cancer
+# pancr_res_path <- "../data/output/pancreatic_fs/"
+# roc_auc_data <- read.csv(paste0(pancr_res_path, "result_roc_auc_100000.csv"), row.names = 1, stringsAsFactors = F)
+# recall_data <- read.csv(paste0(pancr_res_path, "result_recall_100000.csv"), row.names = 1, stringsAsFactors = F)
+# roc_auc_data_pancr <- roc_auc_data[roc_auc_data$feat_added == "upper_WholeGenes",]
+# recall_data_pancr <- recall_data[recall_data$feat_added == "upper_WholeGenes", ]
+# roc_auc_data_pancr$feat_added <- NULL
+# recall_data_pancr$feat_added <- NULL
+# 
+# # for prostate cancer
+# prost_res_path <- "../data/output/prostate_fs/"
+# roc_auc_data <- read.csv(paste0(prost_res_path, "result_roc_auc_100000.csv"), row.names = 1, stringsAsFactors = F)
+# recall_data <- read.csv(paste0(prost_res_path, "result_recall_100000.csv"), row.names = 1, stringsAsFactors = F)
+# roc_auc_data_prost <- roc_auc_data[roc_auc_data$feat_added == "cancer_liver_YY1.human",]
+# recall_data_prost <- recall_data[recall_data$feat_added == "cancer_liver_YY1.human", ]
+# roc_auc_data_prost$feat_added <- NULL
+# recall_data_prost$feat_added <- NULL
+# 
+# # for breast cancer
+# breast_res_path <- "../data/output/classifier_results_best_features_boruta_sign/"
+# roc_auc_data_breast <- read.csv(paste0(breast_res_path, "result_roc_auc_100000.csv"), row.names = 1, stringsAsFactors = F)
+# recall_data_breast <- read.csv(paste0(breast_res_path, "result_recall_100000.csv"), row.names = 1, stringsAsFactors = F)
+# 
+# roc_auc_data_full <- rbind(
+#   roc_auc_data_main,
+#   roc_auc_data_breast,
+#   roc_auc_data_pancr,
+#   roc_auc_data_prost
+# )
+# 
+# recall_data_full <- rbind(
+#   recall_data_main,
+#   recall_data_breast,
+#   recall_data_pancr,
+#   recall_data_prost
+# )
 
-# for pancreatic cancer
-pancr_res_path <- "../data/output/pancreatic_fs/"
-roc_auc_data <- read.csv(paste0(pancr_res_path, "result_roc_auc_100000.csv"), row.names = 1, stringsAsFactors = F)
-recall_data <- read.csv(paste0(pancr_res_path, "result_recall_100000.csv"), row.names = 1, stringsAsFactors = F)
-roc_auc_data_pancr <- roc_auc_data[roc_auc_data$feat_added == "upper_WholeGenes",]
-recall_data_pancr <- recall_data[recall_data$feat_added == "upper_WholeGenes", ]
-roc_auc_data_pancr$feat_added <- NULL
-recall_data_pancr$feat_added <- NULL
-
-# for prostate cancer
-prost_res_path <- "../data/output/prostate_fs/"
-roc_auc_data <- read.csv(paste0(prost_res_path, "result_roc_auc_100000.csv"), row.names = 1, stringsAsFactors = F)
-recall_data <- read.csv(paste0(prost_res_path, "result_recall_100000.csv"), row.names = 1, stringsAsFactors = F)
-roc_auc_data_prost <- roc_auc_data[roc_auc_data$feat_added == "cancer_liver_YY1.human",]
-recall_data_prost <- recall_data[recall_data$feat_added == "cancer_liver_YY1.human", ]
-roc_auc_data_prost$feat_added <- NULL
-recall_data_prost$feat_added <- NULL
-
-# for breast cancer
-breast_res_path <- "../data/output/classifier_results_best_features_boruta_sign/"
-roc_auc_data_breast <- read.csv(paste0(breast_res_path, "result_roc_auc_100000.csv"), row.names = 1, stringsAsFactors = F)
-recall_data_breast <- read.csv(paste0(breast_res_path, "result_recall_100000.csv"), row.names = 1, stringsAsFactors = F)
-
-roc_auc_data_full <- rbind(
-  roc_auc_data_main,
-  roc_auc_data_breast,
-  roc_auc_data_pancr,
-  roc_auc_data_prost
-)
-
-recall_data_full <- rbind(
-  recall_data_main,
-  recall_data_breast,
-  recall_data_pancr,
-  recall_data_prost
-)
-
-roc_auc_data_full[roc_auc_data_full$agg_level == "99", "agg_level"] <- "99."
-recall_data_full[recall_data_full$agg_level == "99", "agg_level"] <- "99."
+# roc_auc_data_full[roc_auc_data_full$agg_level == "99", "agg_level"] <- "99."
+# recall_data_full[recall_data_full$agg_level == "99", "agg_level"] <- "99."
 
 # write full results
 # path_to_full_data <- "../data/output/classifier_results_best_features_boruta_sign/full_results/"
 # write.csv(roc_auc_data_full, file=paste0(path_to_full_data, "result_roc_auc_100000.csv"))
 # write.csv(recall_data_full, file=paste0(path_to_full_data, "result_recall_100000.csv"))
+
+
+main_res_path <- "../data/output_third/classifier_results_best_features_boruta_sign_all_agg_levels/"
+roc_auc_data_full <- read.csv(paste0(main_res_path, "result_roc_auc_100000.csv"), row.names = 1, stringsAsFactors = F)
+recall_data_full <- read.csv(paste0(main_res_path, "result_recall_100000.csv"), row.names = 1, stringsAsFactors = F)
 
 ### get results
 # roc auc
@@ -91,13 +96,21 @@ roc_data <- roc_auc_data_full %>%
     median_test_auc = median(te_auc),
     mean_test_auc = mean(te_auc),
     train_test_diff = mean(train_test_diff),
-    n_ex = n()
+    n_ex = n(),
+    mean_pr_auc = mean(pr_auc),
+    sd_pr_auc = sd(pr_auc),
+    mean_efron_r2 = mean(efron_r2),
+    sd_efron_r2 = sd(efron_r2)
   ) %>%
   mutate(
     ci_lower_roc_auc = mean_test_auc - 1.96 * sd_test_auc / sqrt(n_ex),
-    ci_upper_roc_auc = mean_test_auc + 1.96 * sd_test_auc / sqrt(n_ex)
+    ci_upper_roc_auc = mean_test_auc + 1.96 * sd_test_auc / sqrt(n_ex), 
+    ci_lower_pr_auc = mean_pr_auc - 1.96 * sd_pr_auc / sqrt(n_ex),
+    ci_upper_pr_auc = mean_pr_auc + 1.96 * sd_pr_auc / sqrt(n_ex),
+    ci_lower_r2 = mean_efron_r2 - 1.96 * sd_efron_r2 / sqrt(n_ex),
+    ci_upper_r2 = mean_efron_r2 + 1.96 * sd_efron_r2 / sqrt(n_ex), 
   ) %>%
-  select(-n_ex)
+  select(-c("n_ex", "sd_efron_r2", "sd_pr_auc"))
 
 # recall
 map_df <- data.frame(agg_level=c("99.", "99.5.", "99.9."), agg_level_num = c(0.01, 0.005, 0.001))
@@ -131,8 +144,6 @@ recall_stats <- recall_data_full %>%
          ci_upper_lift_recall, mean_precision, mean_lift_precision, ci_lower_lift_precision,
          ci_upper_lift_precision)
 
-
-# save
 # wb <- createWorkbook()
 # addWorksheet(wb, "ROC_AUC_hotspots")
 # addWorksheet(wb, "Recall_hotspots")
@@ -140,7 +151,54 @@ recall_stats <- recall_data_full %>%
 # writeData(wb, sheet="ROC_AUC_hotspots", roc_data)
 # writeData(wb, sheet="Recall_hotspots", recall_stats)
 # 
-# saveWorkbook(wb, "../reports/train_best_features_boruta_sign.xlsx", overwrite = T)
+# saveWorkbook(wb, "../data/output_third/reports/train_best_features_boruta_sign.xlsx", overwrite = T)
+
+
+# save S8
+roc_data_save <- roc_data %>%
+  select("cancer_type", "agg_level", 
+         "min_test_auc", "sd_test_auc", "median_test_auc", "mean_test_auc", "train_test_diff", "ci_lower_roc_auc", "ci_upper_roc_auc",
+         "mean_pr_auc", "ci_lower_pr_auc", "ci_upper_pr_auc",
+         "mean_efron_r2", "ci_lower_r2", "ci_upper_r2"
+         ) %>%
+  setNames(c("Cancer type",	"Labeling type", "Min test ROC AUC",	"SD test ROC AUC",	"Median test ROC AUC",	
+             "Mean test ROC AUC", "Train-test difference ROC AUC", "Lower bound of confidence interval for mean test ROC AUC",	
+             "Upper bound of confidence interval for mean test ROC AUC", "Mean test PR AUC", 
+             "Lower bound of confidence interval for mean test PR AUC",	"Upper bound of confidence interval for mean test PR AUC",
+             "Mean test Efron pseudo-R2", "Lower bound of confidence interval for mean test Efron pseudo-R2",
+             "Upper bound of confidence interval for mean test Efron pseudo-R2"))
+
+
+recall_stats_save <- recall_stats %>%
+  select(c("quantile", "cancer_type", "agg_level", "mean_recall", "mean_lift_recall", "ci_lower_lift_recall",
+           "ci_upper_lift_recall",  "mean_precision","mean_lift_precision", "ci_lower_lift_precision", 
+           "ci_upper_lift_precision")) %>%
+  setNames(c("quantile", "Cancer type",		"Labeling type", "Mean recall",	"Mean lift of recall",
+  "Lower bound of confidence interval for mean lift of recall",	"Upper bound of confidence interval for mean  lift of recall",
+  "Mean precision",	"Mean lift of precision",	"Lower bound of confidence interval for mean lift of precision",
+  "Upper bound of confidence interval for mean  lift of precision"))
+
+rec_3 <- recall_stats_save[recall_stats_save$quantile == 0.03, ] %>% select(-quantile)
+rec_5 <- recall_stats_save[recall_stats_save$quantile == 0.05, ] %>% select(-quantile)
+
+q3 <- roc_data_save %>%
+  inner_join(
+    rec_3, by=c("Cancer type","Labeling type")
+  )
+q5 <- roc_data_save %>%
+  inner_join(
+    rec_5, by=c("Cancer type", "Labeling type")
+  )
+
+wb <- createWorkbook()
+addWorksheet(wb, "q3")
+addWorksheet(wb, "q5")
+
+writeData(wb, sheet="q3", q3)
+writeData(wb, sheet="q5", q5)
+saveWorkbook(wb, "../data/output_third/reports/s8.xlsx", overwrite = T)
+
+
 ```
 
 ## Comparison of quality for full and reduced model

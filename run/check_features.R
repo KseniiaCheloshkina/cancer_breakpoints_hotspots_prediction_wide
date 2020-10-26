@@ -29,7 +29,7 @@ win_len <- 100000
 data <- read.csv(
   paste0("data/datasets/dataset_", format(win_len, scientific = FALSE), ".csv")
 )
-
+data$X <- NULL
 hsp_cols <- grep(x = names(data), pattern = "hsp", value = TRUE)
 
 conserved_features <- c(
@@ -406,3 +406,183 @@ for (target_column in all_target_cols){
   write.csv(all_results, file = "data/output/feature_engineering_only_binary.csv")
 }
 
+
+
+
+
+
+#### CHECk RECALL-PRECISION UPLIFT FOR LOCAL/DISTANT FEATURES FOR BREAST
+
+
+target_column <- "hsp_99._breast" 
+  
+cancer_pos_label_data <- all_data[all_data[target_column] == 1, ]
+set.seed(7)
+tr_pos <- sample(rownames(cancer_pos_label_data), size = floor(init_ratio * nrow(cancer_pos_label_data)), 
+                 replace = FALSE)
+pos_data_train <- cancer_pos_label_data[tr_pos, ]
+
+cancer_type <- strsplit(target_column, "_")[[1]][3]
+
+all_features_cols <- c(all_conserved_feats, grep(x = all_tissue_spec_feats, pattern = cancer_type, value = TRUE))
+
+# split on train/test
+n_repeats <- 30
+
+# models parameters
+trCtrl <- trainControl(
+  method="none",
+  verboseIter = TRUE,
+  classProbs=TRUE,
+  summaryFunction = twoClassSummary,
+  seeds = seq(1, n_repeats))
+# set "seeds" parameters to make results reproducible
+
+mtryGrid <- expand.grid(mtry = 5)
+recall_quantiles <- c(0.001, 0.005, 0.002,  0.003, 0.015, 0.025, seq(0.01, 0.05, 0.01), seq(0.1, 0.9, 0.05))
+one_iter_res <- foreach(i=seq(1, n_repeats)) %dopar% {
+  
+  set.seed(i)
+  tr_neg <- createDataPartition(neg_data_train$strata, p = train_ratio, list = FALSE)
+  data_train <- neg_data_train[tr_neg,]
+  data_test  <- neg_data_train[-tr_neg,]
+  
+  set.seed(i)
+  tr_pos <- sample(x = rownames(pos_data_train), size = floor(train_ratio * nrow(pos_data_train)), replace = FALSE)
+  te_pos <- setdiff(rownames(pos_data_train), tr_pos)
+  data_train <- rbind(data_train, pos_data_train[tr_pos, ])
+  data_test <- rbind(data_test, pos_data_train[te_pos, ])
+  
+  x_train <- data_train[all_features_cols]
+  x_test <- data_test[all_features_cols]
+  
+  y_train <- as.factor(data_train[, target_column])
+  levels(y_train) <- c("X0", "X1")
+  y_test <- as.factor(data_test[, target_column])
+  levels(y_test) <- c("X0", "X1")
+  
+  # limit outliers
+  # all_numerical_cols <- intersect(all_features_cols, all_numerical_features)
+  # data_tr <- limit_outliers(x_train = x_train, x_test = x_test, 
+  #                           features = all_numerical_cols, iqr_multiplicator = 3)
+  # all_bin_cols <- setdiff(all_features_cols, all_numerical_cols)
+  
+  # x_train <- x_train %>% 
+  #   select(all_bin_cols) %>%
+  #   cbind(data_tr[['train']])
+  #   
+  # x_test <- x_test %>% 
+  #   select(all_bin_cols) %>%
+  #   cbind(data_tr[['test']])
+  
+  feat_groups <- list()
+  feat_groups[["base"]] <- intersect(features_cols, all_features_cols) 
+  feat_groups[["base_with_binary_flags"]] <- intersect(
+    c(features_cols, bin_features), 
+    all_features_cols)
+  feat_groups[["base_with_higher_level_feats"]] <- intersect(
+    c(features_cols, high_features), 
+    all_features_cols) 
+  feat_groups[["base_with_maximums"]] <- intersect(
+    c(features_cols, max_features), 
+    all_features_cols) 
+  
+  feat_iter_res <- list()
+  
+  # for each feature group
+  
+  for (j in 1:length(feat_groups)){
+    
+    features_gr <- names(feat_groups)[j]
+    features_nm <- feat_groups[[features_gr]]
+    
+    # fit models
+    model <- train(
+      x = x_train[features_nm], 
+      y = y_train,
+      preProcess = c("zv", "YeoJohnson", "center", "scale"),
+      method = "rf",
+      metric="ROC",   
+      maximize = TRUE,
+      trControl = trCtrl,
+      ntree = 500,
+      nodesize = 30,
+      maxnodes = 3,
+      sampsize = c(X0 = floor(length(tr_pos) * 5), X1 = length(tr_pos)),
+      tuneGrid = mtryGrid
+    )
+    
+    # ROC AUC
+    train_pred <- predict(model, newdata = x_train[features_nm], type = "prob")
+    test_pred <- predict(model, newdata = x_test[features_nm], type = "prob")
+    train_pred$target <- y_train
+    test_pred$target <- y_test
+    
+    # tr_auc <- auc(response = train_pred$target, predictor = train_pred$X1, levels=c("X0", "X1"), direction = "<") 
+    # te_auc <- auc(response = test_pred$target, predictor = test_pred$X1, levels=c("X0", "X1"), direction = "<")
+    # out_df <- data.frame(features_group = features_gr, tr_auc = tr_auc, te_auc = te_auc)     
+    # feat_iter_res <- rbind(feat_iter_res, out_df)
+    
+    model_qual <- get_model_quality(train_pred, test_pred, model, recall_quantiles)
+    model_qual[['features_group']] <- features_gr
+    feat_iter_res[[j]] <- model_qual
+  }
+  
+  return(feat_iter_res)
+}
+
+
+# save results
+
+df_roc_auc_all <- data.frame()
+df_imp_all <- data.frame()
+df_recall_all <- data.frame()
+
+for (split_iter in 1:length(one_iter_res)){
+  for (feat_gr_iter in 1:4){
+    # feat_gr_iter <- 1
+    res_iter <- one_iter_res[[split_iter]][[feat_gr_iter]]
+    
+    # extract specific datasets
+    df_roc_auc <- res_iter[['roc_auc']]
+    df_imp <- res_iter[['importance']]
+    df_recall <- res_iter[['recall']]
+    
+    feat_gr_nm_current <- res_iter[['features_group']]
+    
+    # add general info
+    df_roc_auc <- df_roc_auc %>%
+      mutate(
+        iter = split_iter,
+        feat_group = feat_gr_nm_current,
+        cancer_type = cancer_type,
+        agg_level = agg_level,
+        win_len = format(win_len, scientific = F)
+      )
+    
+    df_imp <- df_imp %>%
+      mutate(
+        iter = split_iter,
+        feat_group = feat_gr_nm_current,
+        cancer_type = cancer_type,
+        agg_level = agg_level,
+        win_len = format(win_len, scientific = F)
+      )
+    
+    df_recall <- df_recall %>%
+      mutate(
+        iter = split_iter,
+        feat_group = feat_gr_nm_current,
+        cancer_type = cancer_type,
+        agg_level = agg_level,
+        win_len = format(win_len, scientific = F)
+      )
+    
+    df_roc_auc_all <- rbind(df_roc_auc_all, df_roc_auc)
+    df_imp_all <- rbind(df_imp_all, df_imp)
+    df_recall_all <- rbind(df_recall_all, df_recall)
+  }  
+}
+
+write.csv(df_roc_auc_all, file = "data/output/roc_auc_feature_engineering_breast.csv")
+write.csv(df_recall_all, file = "data/output/recall_feature_engineering_breast.csv")

@@ -414,12 +414,13 @@ filt_data_summary <- all_data %>%
     n_var_types = n_distinct(variant_type),
     n_bkpt = n()
   )
+
 # save
-wb <- createWorkbook()
-addWorksheet(wb, "raw data")
-addWorksheet(wb, "filtered data")
- 
-writeData(wb, sheet="raw data", raw_data_summary)
-writeData(wb, sheet="filtered data", filt_data_summary)
- 
-saveWorkbook(wb, "../breakpoints_summary.xlsx", overwrite = T)
+# wb <- createWorkbook()
+# addWorksheet(wb, "raw data")
+# addWorksheet(wb, "filtered data")
+#  
+# writeData(wb, sheet="raw data", raw_data_summary)
+# writeData(wb, sheet="filtered data", filt_data_summary)
+#  
+# saveWorkbook(wb, "../breakpoints_summary.xlsx", overwrite = T)

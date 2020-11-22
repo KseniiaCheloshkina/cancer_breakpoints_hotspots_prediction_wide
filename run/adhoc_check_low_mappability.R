@@ -11,12 +11,23 @@ source("../cbp_data/get_intersections.R")
 
 win_len <- 100000
 
+
+
 ####################### BREAKPOINTS IN LOW-MAPPABLE REGIONS 
 # load breakpoints
-df <- read.csv("../../cbp_data/data/raw breakpoints/breast_all_data.csv")
-df <- df %>% 
-  select(chr, chr_bkpt_beg, chr_bkpt_end) %>%
-  setNames(c("chr", "start", "end"))
+path <- "../../cbp_data/data/raw breakpoints/raw_release_28/after_preprocessing/"
+fl_data <- list.files(path)
+fl_data <- fl_data[fl_data != "all_cancer_data_eda.csv"]
+all_df <- data.frame()
+for (fl in fl_data){
+  df <- read.csv(paste0(path, fl))
+  df <- df %>% 
+    select(chr, chr_bkpt_beg, chr_bkpt_end) %>%
+    setNames(c("chr", "start", "end")) %>%
+    mutate(cancer_type=gsub(x = fl, pattern = "_all_data.csv", replacement = ""))
+  all_df <- rbind.data.frame(all_df, df)
+}
+
 
 # load blacklist
 
@@ -48,41 +59,50 @@ df_low_map$score <- round(df_low_map$score, 2)
 # cumulative
 thrs <- c(0.25, 0.33, 0.5, 1)
 all_data <- data.frame()
-
+cancer_types <- unique(all_df$cancer_type)
 for (thr in thrs){
   df_low_map_thr <- df_low_map[df_low_map$score < thr, ]
   df_low_map_thr$score <- NULL
-  
-  windows_with_blacklisted <- get_intersection_intervals(df, df_low_map_thr)
-  windows_with_blacklisted <- windows_with_blacklisted %>%
-    select(chr, start, end) %>%
-    mutate(
-      thr = thr
-    )
-  all_data <- rbind.data.frame(all_data, windows_with_blacklisted)
+  for (canc in cancer_types){
+    windows_with_blacklisted <- get_intersection_intervals(all_df[all_df$cancer_type == canc, ], df_low_map_thr)
+    windows_with_blacklisted <- windows_with_blacklisted %>%
+      select(chr, start, end) %>%
+      mutate(
+        thr = thr,
+        cancer_type = canc
+      )
+    all_data <- rbind.data.frame(all_data, windows_with_blacklisted)    
+  }
 }
 all_data <- all_data %>% unique()
 all_data$ones <- 1
-all_data_wide <- dcast(all_data, chr + start + end ~ thr, value.var="ones")
+all_data_wide <- dcast(all_data, chr + start + end + cancer_type ~ thr, value.var="ones")
 all_data_wide[is.na(all_data_wide)] <- 0
+
+totals <- all_df %>% 
+  group_by(cancer_type) %>%
+  summarize(
+    total_bkpt = n()
+  )
 
 
 stats <- all_data %>%
   unique() %>%
-  group_by(thr) %>%
+  group_by(cancer_type, thr) %>%
   summarize(
     n_breaks_in_non_unique = n()
   ) %>% 
+  inner_join(totals) %>%
   mutate(
-    proportion_breaks_in_non_unique = n_breaks_in_non_unique/nrow(df)
-  )
+    proportion_breaks_in_non_unique = n_breaks_in_non_unique/total_bkpt
+  ) 
 
-
+# FOR BREAST
 # select threshold <0.5 and save final breakpoints
 df_low_map_thr <- df_low_map[df_low_map$score < 0.5, ]
 df_low_map_thr$score <- NULL
 
-windows_with_blacklisted <- get_intersection_intervals(df, df_low_map_thr)
+windows_with_blacklisted <- get_intersection_intervals(all_df[all_df$cancer_type == "breast", ], df_low_map_thr)
 windows_with_blacklisted <- windows_with_blacklisted %>%
   select(chr, start, end) %>%
   mutate(
@@ -90,23 +110,19 @@ windows_with_blacklisted <- windows_with_blacklisted %>%
   ) %>% 
   unique()
 
-df <- df %>%
+df_breast <- all_df[all_df$cancer_type == "breast", ] %>%
   left_join(windows_with_blacklisted)
-df[is.na(df)] <- 0
-write.csv(df, file="../data/output_third/reports/breast_low_mappable_data.csv")
+df_breast[is.na(df_breast)] <- 0
+write.csv(df_breast, file="../data/output_third/reports/breast_low_mappable_data.csv")
 
 # wb <- createWorkbook()
 # addWorksheet(wb, "breast_summary")
 # addWorksheet(wb, "breast_labels")
 # 
 # writeData(wb, sheet="breast_summary", stats)
-# writeData(wb, sheet="breast_labels", df)
+# writeData(wb, sheet="breast_labels", df_breast)
 # 
-# saveWorkbook(wb, "../data/output_third/reports/breast_low_mappable.xlsx", overwrite = T)
-
-
-
-
+# saveWorkbook(wb, "../data/output_third/reports/breast_low_mappable_new.xlsx", overwrite = T)
 
 
 
@@ -234,7 +250,7 @@ library(pROC)
 source("run/features.R")
 source("run/tools.R")
 
-n_cores <- 1
+n_cores <- 2
 registerDoParallel(n_cores)
 
 set.seed(7)
@@ -288,7 +304,7 @@ for (feat in features_cols){
 }
 all_conserved_feats <- setdiff(features_cols, all_tissue_spec_feats)
 
-# hsp_cols <- hsp_cols[-grep(x = hsp_cols, pattern = "all")]
+hsp_cols <- hsp_cols[-grep(x = hsp_cols, pattern = "all")]
 
 # train/test split
 train_ratio <- 0.7
@@ -409,11 +425,3 @@ for (target_column in hsp_cols){
   write.csv(df_imp_all, file = paste0(output_path, "boruta_res_", "lm", ".csv"))
   
 }
-
-
-
-
-
-
-
-

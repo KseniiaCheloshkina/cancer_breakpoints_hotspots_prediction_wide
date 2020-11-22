@@ -1,0 +1,144 @@
+---
+title: "Boruta FS for breast with low-mapable regions excluded"
+output: html_notebook
+---
+
+Load data
+
+```{r echo=F}
+library(dplyr)
+library(reshape2)
+
+library(ggplot2)
+library(wesanderson)
+library("ggsci")
+
+library(openxlsx)
+
+library(formattable)
+
+customYellow = 'yellow'
+customBlue = '#1E90FF'
+pal <- wes_palette("Zissou1", 100, type = "continuous")
+
+source('../run/tools.R')
+source('../run/features.R')
+
+df <- read.csv("../data/output_third/boruta_res_lm.csv", row.names = 1, stringsAsFactors = F)
+df <- unique(df)
+df %>%
+  group_by(agg_level) %>%
+  summarize(n_distinct(cancer_type))
+```
+
+
+For each feature how many times it appeared in final feature set by cancer type
+
+```{r, fig.width=10, fig.height=12}
+df_all_hits <- df %>% 
+  filter(feature_type == "real") %>%
+  filter(hit == 1)
+
+df_hits_last_iter <- df_all_hits %>%
+  group_by(cancer_type, repeat., resample, agg_level) %>%
+  filter(iter == max(iter))
+```
+
+Max iter distribution
+
+```{r}
+n_iters <- df_hits_last_iter %>%
+  select(cancer_type, agg_level, repeat., resample, iter) %>%
+  unique()
+ggplot(n_iters, aes(iter, fill=agg_level))+
+  geom_histogram(alpha=0.5, bins=5, position="dodge")
+```
+
+Total 1 * 30 * 10 = 300 datasets
+
+```{r}
+df_hits_last_iter$feature_n <- gsub(x=df_hits_last_iter$feature, pattern = "upper_", replacement = "")
+
+feature_cols <- unique(df_hits_last_iter$feature)
+
+df_feat_proper <- get_feature_df(feature_cols)
+
+df_hits_last_iter <- df_hits_last_iter %>%
+  inner_join(df_feat_proper)
+
+by_f <- df_hits_last_iter %>%
+  group_by(feature_group, feature) %>%
+  summarize(
+    total_sets = n()
+    ) %>%
+  arrange(desc(total_sets))
+by_f
+```
+
+```{r fig.width=10, fig.height=7}
+by_f$is_upper <- 0
+by_f$is_upper[grep(x=by_f$feature, pattern = "upper_")] <- 1
+by_f$new_feature<- by_f$feature
+by_f$new_feature[grep(x=by_f$new_feature, pattern = "DNase_seq")] <- "DNase_seq"
+by_f$new_feature[(by_f$new_feature == "DNase_seq") & (by_f$is_upper == 1)] <- "upper_DNase_seq" 
+by_f$new_feature[grep(x=by_f$new_feature, pattern = "DNA_methylation")] <- "DNA_methylation"
+by_f$new_feature[(by_f$new_feature == "DNA_methylation") & (by_f$is_upper == 1)] <- "upper_DNA_methylation" 
+by_f$new_feature[grep(x=by_f$new_feature, pattern = "H3K4me3")] <- "H3K4me3"
+by_f$new_feature[(by_f$new_feature == "H3K4me3") & (by_f$is_upper == 1)] <- "upper_H3K4me3"
+by_f$new_feature[grep(x=by_f$new_feature, pattern = "H3K36me3")] <- "H3K36me3"
+by_f$new_feature[(by_f$new_feature == "H3K36me3") & (by_f$is_upper == 1)] <- "upper_H3K36me3" 
+by_f$new_feature[grep(x=by_f$new_feature, pattern = "H3K27ac")] <- "H3K27ac"
+by_f$new_feature[(by_f$new_feature == "H3K27ac") & (by_f$is_upper == 1)] <- "upper_H3K27ac" 
+by_f$new_feature[grep(x=by_f$new_feature, pattern = "H3K27me3")] <- "H3K27me3"
+by_f$new_feature[(by_f$new_feature == "H3K27me3") & (by_f$is_upper == 1)] <- "upper_H3K27me3" 
+by_f$new_feature[grep(x=by_f$new_feature, pattern = "H3K4me1")] <- "H3K4me1"
+by_f$new_feature[(by_f$new_feature == "H3K4me1") & (by_f$is_upper == 1)] <- "upper_H3K4me1" 
+by_f$new_feature[grep(x=by_f$new_feature, pattern = "H3K9me3")] <- "H3K9me3"
+by_f$new_feature[(by_f$new_feature == "H3K9me3") & (by_f$is_upper == 1)] <- "upper_H3K9me3" 
+by_f$new_feature[grep(x=by_f$new_feature, pattern = "H3K9me3")] <- "H3K9me3"
+by_f$new_feature[(by_f$new_feature == "H3K9me3") & (by_f$is_upper == 1)] <- "upper_H3K9me3"
+by_f$new_feature[by_f$feature_group == "tf"] <- gsub(x = by_f$new_feature[by_f$feature_group == "tf"], pattern = "cancer_liver_", "")
+by_f$new_feature[by_f$feature_group == "tf"] <- gsub(x = by_f$new_feature[by_f$feature_group == "tf"], pattern = ".human", "")
+
+feat_colors <- as.character(proper_feature_group_names$colors)
+names(feat_colors) <- as.character(proper_feature_group_names$feature_group_name_proper)
+
+by_f <- by_f %>%
+  # inner_join(df_feat_proper, by="feature") %>%
+  inner_join(proper_feature_group_names, by=c("feature_group"="feature_group_name"))
+
+by_f <- by_f %>%  
+  group_by(feature_group_name_proper, new_feature) %>%
+  summarize(
+    total_sets = sum(total_sets)
+    )
+
+base_size <- 9
+base_family <- "sans"
+
+g2 <- ggplot(by_f, aes(x=reorder(new_feature, total_sets, median), y=total_sets, fill=feature_group_name_proper))+
+  geom_bar(stat="identity",color="black", position="dodge") + 
+  coord_flip() + 
+  scale_fill_manual(values = feat_colors)+
+  theme_light()+
+  ylab("Total number of datasets")+
+  xlab("Feature")+
+  labs(fill='Feature group')+
+  theme(
+  text = element_text(family = base_family, face = "plain",
+                      colour = "black", size = base_size,
+                      lineheight = 0.9, hjust = 0.5, vjust = 0.5, angle = 0,
+                      debug = FALSE, inherit.blank = TRUE
+                      ),
+  axis.title.x = element_text(vjust = 1, size = 10, inherit.blank = T),
+  axis.title.y = element_text(angle = 90, 
+                              vjust = 1, size = 10),
+  legend.position = "bottom",
+  legend.title = element_text(hjust = 0, size = 10),
+  )
+# ggsave(filename = "Fig_breast_boruta.tiff", plot = g2, device = "tiff", path = "../paper_third/", dpi = 600, units = "in", width = 5, height = 3, scale = 2.2, compression = "lzw")
+g2
+```
+
+
+

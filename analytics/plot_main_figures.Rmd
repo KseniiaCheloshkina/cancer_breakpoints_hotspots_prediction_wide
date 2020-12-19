@@ -1,0 +1,255 @@
+---
+title: "Main text figures"
+author: "K Cheloshkina"
+date: "19 12 2020"
+output: html_document
+---
+
+```{r}
+library(ggplot2)
+library(ggsci)
+library(ggpubr)
+library(wesanderson)
+source("../run/tools.R")
+pal <- wes_palette("Zissou1", 100, type = "continuous")
+```
+
+
+### Fig1
+
+From `analytics/classification_report_feature_importance.Rmd`
+
+```{r}
+df_onegroup_by_cancer_2 <- read.csv("../datasets/output_for_figures/fig1_df_onegroup_by_cancer_2.csv")
+df_onegroup_by_cancer_1 <- read.csv("../datasets/output_for_figures/fig1_df_onegroup_by_cancer_1.csv")
+
+colors <- c("#0073C2", "#EFC000", "#868686", "#8F7700", "#7AA6DC", "#A73030", "#003C67")
+names(colors) <- c("DNase", "HM", "methyl", "TF", "region", "non-B DNA", "TAD")
+
+g3 <- ggplot(df_onegroup_by_cancer_1, 
+       aes(x=-.r,
+           y=mean_ratio_lift, fill=feature_group_name_proper))+
+  geom_bar(position="dodge", stat='identity', color='black', width=1)+
+  facet_wrap(~Cancer.type, ncol = 2, scales="free")+
+  coord_flip()+
+  theme_light_custom()+
+  scale_x_continuous( 
+    breaks = -df_onegroup_by_cancer_1$.r,  
+    labels = df_onegroup_by_cancer_1$feature_group_name_proper
+  ) +
+  scale_fill_manual(values = colors)+
+  ylab("Scaled mean lift of recall")+
+  xlab("Feature group") +
+  labs(fill="Feature group")+
+  guides(fill = guide_legend(nrow = 1))
+
+g4 <- ggplot(df_onegroup_by_cancer_2, 
+       aes(x=-.r,
+           y=mean_ratio_roc, fill=feature_group_name_proper))+
+  geom_bar(position="dodge", stat='identity', color='black')+
+  facet_wrap(~Cancer.type, ncol = 2, scales="free")+
+  coord_flip()+
+  theme_light_custom()+
+  scale_x_continuous(  
+    breaks = -df_onegroup_by_cancer_2$.r,    
+    labels = df_onegroup_by_cancer_2$feature_group_name_proper
+  ) +
+  scale_fill_manual(values = colors)+
+  ylab("Scaled mean ROC AUC")+
+  xlab("Feature group") +
+  labs(fill="Feature group")+
+  guides(fill = guide_legend(nrow = 1))
+
+g_f <- ggarrange(g3, g4,  
+          labels = c("A", "B"),
+          ncol = 1, nrow = 2, heights = c(1, 1),
+          font.label = list(size = 10, color = "black", face ="bold"))
+g_f
+```
+
+### Fig2
+
+From `analytics/classification_report_boruta_plus_significant.Rmd`
+
+```{r}
+best_features <- read.csv("../datasets/output_for_figures/fig2_best_features.csv")
+ord_f <- read.csv("../datasets/output_for_figures/fig2_ord_f.csv")
+best_features$X <- NULL
+best_features$feature_ord <- factor(best_features$feature_new, levels = ord_f$feature_new)
+
+feat_colors <- c("#0073C2", "#EFC000", "#868686", "#8F7700", "#7AA6DC", "#A73030", "#003C67")
+names(feat_colors) <- c("DNase", "HM", "methyl", "TF", "region", "non-B DNA", "TAD")
+
+ggplot(best_features, aes(x=cancer_type, y=feature_ord, fill=feature_group_name_proper))+
+  geom_tile() + 
+  theme_light_custom()+
+  xlab("Cancer type")+
+  ylab("Feature")+
+  labs(fill="Feature group")+
+  scale_fill_manual(values = feat_colors)
+```
+
+
+
+### Fig3
+
+From `analytics/classification_report_feature_importance.Rmd`
+
+```{r}
+pl_values <- read.csv("../datasets/output_for_figures/fig3.csv")
+
+feat_colors <- c("#0073C2", "#EFC000", "#868686", "#8F7700", "#7AA6DC", "#A73030", "#003C67", "#4A6990")
+names(feat_colors) <- c("DNase", "HM", "methyl", "TF", "region", "non-B DNA", "TAD", "all")
+
+agg_lev <- "99."
+
+ggplot(pl_values[pl_values$agg_level == agg_lev, ], 
+       aes(x=r, y=value, fill=reorder(feature_group_name_proper, r))) + 
+  geom_boxplot() +
+  facet_grid(metric~cancer_type, scales="free")+
+  theme_light()+
+  xlab("Feature group")+
+  ylab("Metric value") +
+  labs(fill = "Feature group")+
+  scale_x_continuous(
+    breaks = pl_values[pl_values$agg_level == agg_lev, "r"]
+  ) +
+  scale_fill_manual(values = feat_colors)+
+  theme(
+    axis.title.x=element_blank(),
+    axis.text.x=element_blank(),
+    axis.ticks.x=element_blank(),
+    text = element_text(size = 9, family = "sans"),
+    axis.title.y = element_text(size = 10),
+    axis.text.y = element_text(hjust = 1),
+    legend.position="bottom", legend.title = element_text(size = 10),    
+    )
+
+```
+
+### Fig4
+
+From `analytics/classification_report_feature_importance.Rmd`
+
+```{r}
+breast_reg <- read.csv("../datasets/output_for_figures/fig4_breast_reg.csv")
+breast_sec_str <- read.csv("../datasets/output_for_figures/fig4_breast_sec_str.csv")
+breast_tf <- read.csv("../datasets/output_for_figures/fig4_breast_tf.csv")
+
+feat_colors <- pal_jco("default")(10)
+feat_colors <- gsub(x = feat_colors, pattern = "FF", replacement = "")
+feat_colors <- feat_colors[1:9]
+names(feat_colors) <- c("A_Phased_Repeat", "Direct_Repeat", "Inverted_Repeat", "Mirror_Repeat", "Short_Tandem_Repeat",
+                        "Z_DNA_Motif", "G_quadruplex", "stemloops_16_50", "stemloops_6_15")
+g1 <- ggplot(
+  breast_sec_str,
+ aes(x=reorder(raw_feature, importance, FUN=median), y=importance, fill=reorder(raw_feature, importance, FUN=median))
+) + 
+  geom_boxplot()+
+  facet_wrap(~upper)+
+  theme_light_custom() + 
+  scale_fill_manual(values = feat_colors)+
+  labs(fill='Feature')+
+  ylab("Importance")+
+  xlab("Labeling type")+
+  theme(
+    axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+    )
+
+feat_colors <- pal_jco("default")(10)
+feat_colors <- c(feat_colors, "#0073C27F", "#EFC0007F", "#8686867F", "#CD534C7F","#8F77007F", "#3B3B3B7F")
+names(feat_colors) <- c("ATF3", "CTCF", "EGR1", "FOXA1", "FOXA2", "GABPA", "HNF4A", "HNF4G", "JUND", "MAX", "NR2F2", "REST", "RXRA", "SP1", "YY1", "ZBTB33")
+
+g2 <- ggplot(
+  breast_tf,
+  aes(x=reorder(raw_feature, importance, FUN=median), y=importance, fill=reorder(raw_feature, importance, FUN=median))
+) + 
+  geom_boxplot()+
+  facet_wrap(~upper)+
+  theme_light_custom() + 
+  scale_fill_manual(values = feat_colors)+
+  labs(fill='Feature')+
+  ylab("Importance")+
+  xlab("Labeling type")+
+  theme(
+    axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+    )+
+  guides(fill=guide_legend(nrow = 2))
+
+
+feat_colors <- pal_jco("default")(10)
+feat_colors <- gsub(x = feat_colors, pattern = "FF", replacement = "")
+feat_colors <- feat_colors[1:7]
+names(feat_colors) <- c("X3UTR", "X5UTR", "codingExons", "downstream", "introns", "promoters", "WholeGenes")
+
+g3 <- ggplot(
+  breast_reg,
+  aes(x=reorder(raw_feature, importance, FUN=median), y=importance, fill=reorder(raw_feature, importance, FUN=median))
+) + 
+  geom_boxplot()+
+  facet_wrap(~upper)+
+  theme_light_custom() + 
+  scale_fill_manual(values = feat_colors)+
+  labs(fill='Feature')+
+  ylab("Importance")+
+  xlab("Labeling type")+
+  theme(
+    axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+    )+
+  guides(fill=guide_legend(nrow = 2))
+g3
+
+
+g_f <- ggarrange(g1, g2, g3,  
+          labels = c("A", "B", "C"),
+          ncol = 1, nrow = 3, heights = c(1, 1, 1),
+          font.label = list(size = 10, color = "black", face ="bold"))
+g_f
+```
+
+
+### Fig5
+
+From `analytics/classification_report_randomness.Rmd`
+
+```{r}
+recall_data_base_all <- read.csv("../datasets/output_for_figures/fig5_recall_data_base_all.csv")
+roc_auc_data_base_all <- read.csv("../datasets/output_for_figures/fig5_roc_auc_data_base_all.csv")
+
+g3 <- ggplot(roc_auc_data_base_all[roc_auc_data_base_all$type != "bkpt_q", ], aes(x=agg_level, y=te_auc, fill=type1)) + 
+  geom_boxplot() + 
+  facet_wrap(~ cancer_type, nrow=1,  scales="free_y") + 
+  xlab("Labeling threshold") + 
+  ylab("ROC AUC") +
+  theme_light_custom() + 
+  labs(fill = "Model type")+
+  theme(
+    axis.text.x = element_text(angle = 30, vjust = 1, hjust = 1, size=9)
+  )
+g4 <- ggplot(recall_data_base_all %>%
+  filter(
+    quantile %in% c(0.03, 0.05,0.1),
+    type != "bkpt_q"
+    ), 
+  aes(x=agg_level, fill=type1, y=lift_recall)) + 
+  geom_boxplot() + 
+  facet_grid(quantile ~ cancer_type, scales = "free_y") + 
+  theme_light_custom() + 
+  labs(fill = "Model type")+
+  xlab("Labeling threshold") + 
+  ylab("Lift of recall")+
+  theme(
+    axis.text.x = element_text(angle = 30, vjust = 1, hjust = 1, size=9)
+  )
+
+g_f <- ggarrange(g3, g4,  
+          labels = c("A", "B"),
+          ncol = 1, nrow = 2, heights = c(1, 3),
+          font.label = list(size = 10, color = "black", face ="bold"))
+g_f
+
+```
+
+
+
+

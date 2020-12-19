@@ -190,13 +190,13 @@ q5 <- roc_data_save %>%
     rec_5, by=c("Cancer type", "Labeling type")
   )
 
-wb <- createWorkbook()
-addWorksheet(wb, "q3")
-addWorksheet(wb, "q5")
-
-writeData(wb, sheet="q3", q3)
-writeData(wb, sheet="q5", q5)
-saveWorkbook(wb, "../data/output_third/reports/s8.xlsx", overwrite = T)
+# wb <- createWorkbook()
+# addWorksheet(wb, "q3")
+# addWorksheet(wb, "q5")
+# 
+# writeData(wb, sheet="q3", q3)
+# writeData(wb, sheet="q5", q5)
+# saveWorkbook(wb, "../data/output_third/reports/s8.xlsx", overwrite = T)
 
 
 ```
@@ -214,7 +214,11 @@ roc_data_comp <- rbind.data.frame(
     roc_data %>% select(cancer_type, agg_level) %>% unique(),
     by=c("cancer_type", "agg_level")) %>% 
     mutate(type = "base"),
-  roc_data %>% mutate(type = "reduced"))
+  roc_data %>% select(
+    cancer_type, agg_level, min_test_auc, sd_test_auc, median_test_auc, mean_test_auc, train_test_diff, 
+    ci_lower_roc_auc, ci_upper_roc_auc) %>% 
+    mutate(type = "reduced")
+  )
 
 recall_stats_comp <- rbind.data.frame(
     recall_data_base %>%
@@ -224,7 +228,7 @@ recall_stats_comp <- rbind.data.frame(
     mutate(type = "base"),
   recall_stats %>%
     mutate(type = "reduced")
-)
+) 
 ```
 
 ### ROC AUC
@@ -232,10 +236,11 @@ recall_stats_comp <- rbind.data.frame(
 ```{r fig.height=7}
 roc_data_comp_m <- melt(roc_data_comp, id.vars = c("cancer_type", "agg_level", "type"))
 
-ggplot(roc_data_comp_m, aes(x=cancer_type, y=value, fill=type)) + 
+ggplot(roc_data_comp_m %>% filter(agg_level == "99."), aes(x=cancer_type, y=value, fill=type)) + 
   geom_bar(stat="identity", color="black", position = "dodge") + 
   facet_wrap(~variable, nrow = 5, scales = "free_y") + 
   scale_fill_jco()
+
 ```
 Выводы:
 Медианный тествый ROC AUC на выбранных фичах отличается от медианного тестового ROC AUC на всех признаках незначительно для всех типов рака. При этом в среднем переобучение снизилось для всех типов рака.
@@ -243,7 +248,7 @@ ggplot(roc_data_comp_m, aes(x=cancer_type, y=value, fill=type)) +
 ### Lift of recall and precision
 
 ```{r}
-recall_stats_comp_m <- melt(recall_stats_comp %>%
+recall_stats_comp_m <- melt(recall_stats_comp %>% 
                               select("cancer_type", "agg_level", "quantile", "mean_lift_recall", "mean_lift_precision",
                                      "type"), id.vars = c("cancer_type", "agg_level", "type", "quantile"))
 recall_stats_comp_m$var_new <- paste0(recall_stats_comp_m$variable, "_", recall_stats_comp_m$type)
@@ -254,14 +259,14 @@ recall_stats_comp_m <- recall_stats_comp_m %>%
 
 
 ```{r fig.height=10}
-ggplot(recall_stats_comp_m, aes(x=quantile, y=value, color=var_new)) + 
+ggplot(recall_stats_comp_m %>% filter(agg_level == "99."), aes(x=quantile, y=value, color=var_new)) + 
   geom_line() + 
   facet_wrap(~cancer_type, nrow = 10, scales = "free_y") + 
   scale_color_jco()
 ```
 
 ```{r fig.height=10}
-ggplot(recall_stats_comp_m, aes(x=quantile_chr, y=value, fill=var_new)) + 
+ggplot(recall_stats_comp_m %>% filter(agg_level == "99."), aes(x=quantile_chr, y=value, fill=var_new)) + 
   geom_bar(stat="identity",color="black", position = "dodge") + 
   facet_wrap(~cancer_type, nrow = 10, scales = "free_y") + 
   scale_fill_jco()
@@ -275,7 +280,7 @@ ggplot(recall_stats_comp_m, aes(x=quantile_chr, y=value, fill=var_new)) +
 0.03
 
 ```{r fig.width=10}
-ggplot(recall_stats_comp_m %>% filter(quantile == 0.03), aes(x=cancer_type, y=value, fill=var_new)) + 
+ggplot(recall_stats_comp_m %>% filter(quantile == 0.03) %>% filter(agg_level == "99."), aes(x=cancer_type, y=value, fill=var_new)) + 
   geom_bar(stat="identity", color="black", position = "dodge") + 
   scale_fill_jco()
 ```
@@ -294,18 +299,18 @@ roc_data_comp_m$variable <- as.character(roc_data_comp_m$variable)
 roc_data_comp_m[roc_data_comp_m$variable == 'mean_test_auc', "variable"] <- 'ROC AUC'
 
 for_plot_final <- rbind.data.frame(
-  roc_data_comp_m %>% select(cancer_type, value, variable, type)%>% filter(variable == 'ROC AUC'),
-  comp_rec_pl %>% select(cancer_type, value, variable, type) %>% filter(variable == 'Lift of recall')
+  roc_data_comp_m %>% filter(variable == 'ROC AUC') %>% filter(agg_level == "99.9.")%>% select(cancer_type, value, variable, type),
+  comp_rec_pl %>% filter(variable == 'Lift of recall') %>% filter(agg_level == "99.9.")%>% select(cancer_type, value, variable, type)
 )
 
-g1 <- ggplot(for_plot_final, aes(x=cancer_type, y=value, fill=type)) +
+g1 <- ggplot(for_plot_final , aes(x=cancer_type, y=value, fill=type)) +
   geom_bar(stat='identity',  color="black", position = "dodge") +
   facet_wrap(~variable, nrow = 2, scales="free_y") +
   theme_light_custom()+
   xlab("Cancer type") +
   ylab("Mean value") +
   labs(fill = "Feature set")
-
+g1
 g_f <- ggarrange(g_boruta, g1,  
           labels = c("A", "B"),
           ncol = 1, nrow = 2, heights = c(1, 1),
@@ -373,6 +378,14 @@ g1 <- ggplot(best_features, aes(x=cancer_type, y=feature_ord, fill=feature_group
 g1
 # ggsave(filename = "Fig2_main.tiff", plot = g1, device = "tiff", path = "../paper_materials/plots_after_review/", dpi = 600, units = "in", width = 5, height = 3, scale = 2, compression = "lzw")
 ```
+
+
+```{r}
+# write.csv(best_features, file="../datasets/output_for_figures/fig2_best_features.csv")
+# write.csv(ord_f, file="../datasets/output_for_figures/fig2_ord_f.csv")
+```
+
+
 
 Выводы:
 

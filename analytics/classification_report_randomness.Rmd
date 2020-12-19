@@ -378,6 +378,11 @@ g_f
 # ggsave(filename = "Fig5_main.tiff", plot = g_f, device = "tiff", path = "../paper_materials/plots_after_review//", dpi = 600, units = "in", width = 7, height = 5, scale = 2, compression = "lzw")
 ```
 
+```{r}
+# write.csv(recall_data_base_all, file="../datasets/output_for_figures/fig5_recall_data_base_all.csv")
+# write.csv(roc_auc_data_base_all, file="../datasets/output_for_figures/fig5_roc_auc_data_base_all.csv")
+
+```
 
 
 Нагляднее всего различия в lift of recall заметны присравнении точечных оценок, а не распределений, поэтому рассчитаем медиану и доверительный интервал для среднего lift of recall для всех типов моделей.

@@ -608,43 +608,43 @@ ggplot(data_plot, aes(x=feat_group, y=value, fill=feat_group)) +
 
 Добавляем в paper tables по одному столбцу: для каждого типа рака фиксируем уровень агрегации, при котором для какой-то группы признаков достигается максимальный median lift of recall, далее для каждого типа рака находится median test ROC AUC, соответствующий выбранному уровню агрегации и группе признаков. 
 ```{r}
-# paper_table1 <- read.xlsx("../paper_materials/Tables.xlsx", sheet = "Table 1")
-# paper_table2 <- read.xlsx("../paper_materials/Tables.xlsx", sheet = "Table 2")
+paper_table1 <- read.xlsx("../paper_materials/Tables.xlsx", sheet = "Table 1")
+paper_table2 <- read.xlsx("../paper_materials/Tables.xlsx", sheet = "Table 2")
 
-res <- recall_data %>%
-  filter(quantile == 0.03) %>%
-  select("cancer_type", "agg_level", "feat_group","lift_recall","lift_precision") %>%
-  group_by(cancer_type, agg_level, feat_group) %>%
-  summarize(
-    median_lift_recall = median(lift_recall),
-    mean_lift_recall = mean(lift_recall),
-  ) %>%
-  group_by(cancer_type) %>%
-  filter(
-    median_lift_recall == max(median_lift_recall)
-  ) %>%
-  filter(
-    mean_lift_recall == max(mean_lift_recall)
-  ) %>%
-  inner_join(
-    roc_data %>% select(cancer_type, agg_level, feat_group, median_test_auc), by=c("cancer_type", "agg_level","feat_group")
-  )
-
-res_auc <- res %>%
-  select(cancer_type, median_test_auc) %>%
-  setNames(c("Cancer.type", "Best.hotspots.by.one.feature.group"))
-paper_table1 <- paper_table1 %>%
-  inner_join(
-    res_auc, by=c("Cancer.type")
-  )
-
-res_rec <- res %>%
-  select(cancer_type, median_lift_recall) %>%
-  setNames(c("Cancer.type", "Best.hotspots.by.one.feature.group"))
-paper_table2 <- paper_table2 %>%
-  inner_join(
-    res_rec, by=c("Cancer.type")
-  )
+# res <- recall_data %>%
+#   filter(quantile == 0.03) %>%
+#   select("cancer_type", "agg_level", "feat_group","lift_recall","lift_precision") %>%
+#   group_by(cancer_type, agg_level, feat_group) %>%
+#   summarize(
+#     median_lift_recall = median(lift_recall),
+#     mean_lift_recall = mean(lift_recall),
+#   ) %>%
+#   group_by(cancer_type) %>%
+#   filter(
+#     median_lift_recall == max(median_lift_recall)
+#   ) %>%
+#   filter(
+#     mean_lift_recall == max(mean_lift_recall)
+#   ) %>%
+#   inner_join(
+#     roc_data %>% select(cancer_type, agg_level, feat_group, median_test_auc), by=c("cancer_type", "agg_level","feat_group")
+#   )
+# 
+# res_auc <- res %>%
+#   select(cancer_type, median_test_auc) %>%
+#   setNames(c("Cancer.type", "Best.hotspots.by.one.feature.group"))
+# paper_table1 <- paper_table1 %>%
+#   inner_join(
+#     res_auc, by=c("Cancer.type")
+#   )
+# 
+# res_rec <- res %>%
+#   select(cancer_type, median_lift_recall) %>%
+#   setNames(c("Cancer.type", "Best.hotspots.by.one.feature.group"))
+# paper_table2 <- paper_table2 %>%
+#   inner_join(
+#     res_rec, by=c("Cancer.type")
+#   )
 # wb <- createWorkbook()
 # addWorksheet(wb, "Table 1")
 # addWorksheet(wb, "Table 2")
@@ -674,17 +674,17 @@ recall_data_base <- read.csv(paste0(baseline_data_path, "result_recall_100000.cs
 roc_auc_data_base$feature_group_name_proper <- "all"
 recall_data_base$feature_group_name_proper <- "all"
 
-roc_auc_data <- roc_auc_data %>%
-  inner_join(
-    proper_feature_group_names %>% select(feature_group_name, feature_group_name_proper),
-    by=c("feat_group" ="feature_group_name")
-  )
-
-recall_data <- recall_data %>%
-  inner_join(
-    proper_feature_group_names %>% select(feature_group_name, feature_group_name_proper),
-    by=c("feat_group" ="feature_group_name")
-  )
+# roc_auc_data <- roc_auc_data %>%
+#   inner_join(
+#     proper_feature_group_names %>% select(feature_group_name, feature_group_name_proper),
+#     by=c("feat_group" ="feature_group_name")
+#   )
+# 
+# recall_data <- recall_data %>%
+#   inner_join(
+#     proper_feature_group_names %>% select(feature_group_name, feature_group_name_proper),
+#     by=c("feat_group" ="feature_group_name")
+#   )
 
 all_roc_auc_data <- rbind.data.frame(
   roc_auc_data_base %>% select(cancer_type, agg_level, feature_group_name_proper, te_auc, tr_auc, pr_auc),
@@ -773,6 +773,9 @@ g1 <- ggplot(pl_values[pl_values$agg_level == agg_lev, ],
     )
 g1
 # ggsave(filename = "Fig3_main.tiff", plot = g1, device = "tiff", path = "../paper_third/", dpi = 600, units = "in", width = 5, height = 4, scale = 2, compression = "lzw")
+```
+```{r}
+# write.csv(pl_values, file="../datasets/output_for_figures/fig3.csv")
 ```
 
 
@@ -1334,7 +1337,11 @@ g_f
 
 ```
 
-
+```{r}
+# write.csv(breast_sec_str, file="../datasets/output_for_figures/fig4_breast_sec_str.csv")
+# write.csv(breast_tf, file="../datasets/output_for_figures/fig4_breast_tf.csv")
+# write.csv(breast_reg, file="../datasets/output_for_figures/fig4_breast_reg.csv")
+```
 
 
 From the beginning
@@ -1483,6 +1490,10 @@ g_f
 ```
 
 
+```{r}
+# write.csv(df_onegroup_by_cancer_2, file="../datasets/output_for_figures/fig1_df_onegroup_by_cancer_2.csv")
+# write.csv(df_onegroup_by_cancer_1, file="../datasets/output_for_figures/fig1_df_onegroup_by_cancer_1.csv")
+```
 
 
 ### Save paper tables
